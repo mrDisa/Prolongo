@@ -88,7 +88,7 @@ backend-go/
     password.go, session.go, middleware.go, oidc.go
   internal/metrics/collector.go  # prometheus.Collector, читает текущий Result
   migrations/                    # goose SQL, embed
-  openapi/openapi.yml            # копия корневого openapi.yml для embed (или symlink при сборке)
+  openapi/openapi.yml            # копия корневого openapi.yml для embed: `make openapi`, тест сверяет с корнем
   Dockerfile
 ```
 
@@ -473,10 +473,11 @@ prolongo_expected_loss_eur 123.45
 ## 15. Swagger и openapi.yml
 
 - `openapi.yml` (OpenAPI 3.1) пишется руками по `ОБЩЕЕ_ТЗ.md` §7, включая Django-эндпоинты (их часть Django-разработчик выгружает из drf-spectacular, ты вливаешь).
-- Схемы компонентов: `User`, `Error`, `CustomerListItem`, `CustomerListResponse`, `CustomerDetail`, `Money`, `Contribution`, `Recommendation`, `ServiceItem`, `TransactionItem`, `StatusEvent`, `Summary`, `TimelineResponse`, `ModelSettings`, `ModelSettingsPatch`, `FeatureSettings`, `SnapshotRequest`, `SnapshotResponse`, `EventsRequest`, `SimulatorState`.
+- Схемы компонентов: `User`, `Error`, `CustomerListItem`, `CustomerListResponse`, `CustomerDetail`, `Money`, `Contribution`, `Recommendation`, `ServiceItem`, `TransactionItem`, `StatusEvent`, `Summary`, `TimelineResponse`, `ModelSettings`, `ModelSettingsPatch`, `FeatureSetting`, `SnapshotRequest`, `SnapshotResponse`, `EventsRequest`, `SimulatorState`.
 - Security scheme: `cookieAuth` (apiKey in cookie `prolongo_session`) и `metricsBearer` для `/metrics`.
 - Каждому полю — `description` по-русски и `example`. Prism-мок фронта строится из этих example — чем они реалистичнее, тем лучше выглядит фронт на моках.
-- Проверка: `npx @redocly/cli lint openapi.yml` без ошибок.
+- Проверка: `make lint-openapi` (Redocly, конфиг `redocly.yaml`) — 0 ошибок и 0 предупреждений; то же проверяет CI на каждом PR вместе с совпадением копии `backend-go/openapi/openapi.yml`.
+- После любого изменения корневого `openapi.yml` — `make openapi`, иначе упадёт тест и CI.
 
 ## 16. Тесты (обязательный минимум)
 
