@@ -1,0 +1,6 @@
+# Lint config for openapi.yml: npx @redocly/cli@1 lint openapi.yml
+extends:
+  - recommended
+rules:
+  # Private hackathon project, no public license.
+  info-license: off
