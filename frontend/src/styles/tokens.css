@@ -1,0 +1,73 @@
+/* Design tokens, light and dark. Components use only var(--...). */
+
+.theme-light {
+  color-scheme: light;
+  --bg: #f4f4f1;
+  --surface: #ffffff;
+  --surface-2: #f0f0ec;
+  --line: #e6e6e1;
+  --line-strong: #d2d2cb;
+  --text: #121317;
+  --text-2: #5a5d64;
+  --text-3: #6e717a;
+  --accent: #0a7ea8;
+  --accent-ink: #ffffff;
+  --accent-soft: #e3f4fa;
+  --accent-text: #0a7ea8;
+  --track: #ecece7;
+  --hatch: #9bdcf2;
+  --stripe: #3cc4f0;
+
+  --high: #d64b3f;
+  --high-soft: #fbeae7;
+  --high-text: #a8352b;
+  --med: #d3961f;
+  --med-soft: #faf0dc;
+  --med-text: #8a5f0a;
+  --low: #3e9a6a;
+  --low-soft: #e6f3ec;
+  --low-text: #2a6e4a;
+  --none: #a2a5ac;
+  --none-soft: #efefec;
+  --none-text: #55585f;
+
+  --zone-low: #dcefe4;
+  --zone-med: #f6e7c6;
+  --zone-high: #f6d5d0;
+}
+
+.theme-dark {
+  color-scheme: dark;
+  --bg: #0d0e11;
+  --surface: #16181d;
+  --surface-2: #1f2228;
+  --line: #2a2e36;
+  --line-strong: #3a3f49;
+  --text: #edeef0;
+  --text-2: #a9adb6;
+  --text-3: #8b909a;
+  --accent: #3cc4f0;
+  --accent-ink: #0d0e11;
+  --accent-soft: #10303d;
+  --accent-text: #6fd3f5;
+  --track: #262a31;
+  --hatch: #1e5c73;
+  --stripe: #3cc4f0;
+
+  --high: #f07468;
+  --high-soft: #3a1f1d;
+  --high-text: #f59a90;
+  --med: #e9b44c;
+  --med-soft: #3a2f17;
+  --med-text: #f0c978;
+  --low: #5cc28c;
+  --low-soft: #183326;
+  --low-text: #8cd9b0;
+  --none: #6e727b;
+  --none-soft: #24272d;
+  --none-text: #b4b8c0;
+
+  --zone-low: #1c3a2b;
+  --zone-med: #3d321b;
+  --zone-high: #42221f;
+}

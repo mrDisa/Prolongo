@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru" class="theme-light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prolongo</title>
+    <script>
+      // Apply the saved or system theme before first paint to avoid a flash.
+      (function () {
+        var theme = 'light';
+        try {
+          var saved = localStorage.getItem('prolongo-theme');
+          if (saved === 'light' || saved === 'dark') {
+            theme = saved;
+          } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            theme = 'dark';
+          }
+        } catch (e) {}
+        document.documentElement.className = 'theme-' + theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Onest, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 22px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Focus: 2 px accent ring on every interactive element. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  input:focus-visible {
+    outline-offset: 0;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
