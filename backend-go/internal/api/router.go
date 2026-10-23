@@ -18,6 +18,7 @@ func NewRouter(logger *slog.Logger) http.Handler {
 	r.Use(middleware.Recoverer)
 
 	r.Get("/healthz", health) // no auth: used by the compose healthcheck
+	mountDocs(r)
 
 	return r
 }
