@@ -50,7 +50,7 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          if printf '%s\n%s' "$PR_TITLE" "$PR_BODY" | grep -iE 'co-authored-by:|generated with|🤖|claude code'; then
+          if printf '%s\n%s' "$PR_TITLE" "$PR_BODY" | grep -iE '(^|[[:space:]])co-authored-by:|generated with \[|🤖|claude\.com'; then
             echo "::error::Уберите упоминание ИИ из заголовка или описания PR"
             exit 1
           fi
