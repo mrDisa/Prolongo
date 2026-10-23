@@ -1,0 +1,16 @@
+#!/bin/sh
+# Branch name rules: go/<name>, dj/<name> or frontend/<name>. Nothing else is pushed.
+# Git passes one line per pushed ref on stdin: <local ref> <local sha> <remote ref> <remote sha>.
+zero=0000000000000000000000000000000000000000
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
+  [ "$local_sha" = "$zero" ] && continue # deleting a branch is fine
+  branch=${remote_ref#refs/heads/}
+  if ! printf '%s' "$branch" | grep -qE '^(go|dj|frontend)/[A-Za-z0-9][A-Za-z0-9-]*$'; then
+    echo "Push rejected: branch \"$branch\" must be go/<name>, dj/<name> or frontend/<name>, e.g. go/G3-auth."
+    echo "Push отклонён: ветка называется go/<имя>, dj/<имя> или frontend/<имя>. Переименовать: git branch -m <новое-имя>"
+    exit 1
+  fi
+done
+exit 0

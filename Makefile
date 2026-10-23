@@ -1,8 +1,8 @@
 .PHONY: setup env up down logs reset check-authors
 
-## Run once after cloning: enables the commit-msg hook and creates .env
+## Run once after cloning: enables the git hooks and creates .env
 setup:
-	chmod +x .githooks/commit-msg
+	chmod +x .githooks/commit-msg .githooks/pre-push
 	git config core.hooksPath .githooks
 	git config core.quotepath false
 	@[ -f .env ] || cp .env.example .env

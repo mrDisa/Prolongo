@@ -1,9 +1,10 @@
 name: pr-rules
 
 # Team rules for every pull request (see CONTRIBUTING.md §2.6 and §6):
+# - branch name: go/<name>, dj/<name> or frontend/<name>;
 # - commit messages: English only, no AI attribution;
 # - PR title and description: Russian, no AI attribution.
-# Backup for the local .githooks/commit-msg hook (someone may forget to enable it).
+# Backup for the local .githooks hooks (someone may forget to enable it).
 
 on:
   pull_request:
@@ -19,6 +20,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Branch name is go/, dj/ or frontend/
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          if ! printf '%s' "$BRANCH" | grep -qE '^(go|dj|frontend)/[A-Za-z0-9][A-Za-z0-9-]*$'; then
+            echo "::error::Ветка «$BRANCH» не по правилам: только go/<имя>, dj/<имя> или frontend/<имя> (CONTRIBUTING.md §3, шаг 2)"
+            exit 1
+          fi
 
       - name: Commit messages are English and unsigned
         env:
