@@ -1,0 +1,54 @@
+name: pr-rules
+
+# Team rules for every pull request (see CONTRIBUTING.md §2.6 and §6):
+# - commit messages: English only, no AI attribution;
+# - PR title and description: Russian, no AI attribution.
+# Backup for the local .githooks/commit-msg hook (someone may forget to enable it).
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Commit messages are English and unsigned
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          msgs=$(git log --no-merges --format=%B "$BASE_SHA..$HEAD_SHA")
+          if printf '%s\n' "$msgs" | grep -iE '^co-authored-by:|generated with|🤖'; then
+            echo "::error::Уберите Co-Authored-By / «Generated with» из сообщений коммитов"
+            exit 1
+          fi
+          if printf '%s\n' "$msgs" | grep -P '[\x{0400}-\x{04FF}]'; then
+            echo "::error::Сообщения коммитов пишем только на английском"
+            exit 1
+          fi
+
+      - name: PR title and description are Russian and unsigned
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s\n%s' "$PR_TITLE" "$PR_BODY" | grep -iE 'co-authored-by:|generated with|🤖|claude code'; then
+            echo "::error::Уберите упоминание ИИ из заголовка или описания PR"
+            exit 1
+          fi
+          if ! printf '%s' "$PR_TITLE" | grep -qP '[\x{0400}-\x{04FF}]'; then
+            echo "::error::Заголовок PR пишем на русском, например «G3: Авторизация»"
+            exit 1
+          fi
+          if ! printf '%s' "$PR_BODY" | grep -qP '[\x{0400}-\x{04FF}]'; then
+            echo "::error::Описание PR пишем на русском по шаблону"
+            exit 1
+          fi

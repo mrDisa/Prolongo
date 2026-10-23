@@ -1,0 +1,61 @@
+# --- Secrets & local env ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+
+# --- Claude Code: shared settings are committed, personal ones are not ---
+.claude/*
+!.claude/settings.json
+
+# --- Go (backend-go) ---
+backend-go/bin/
+backend-go/tmp/
+*.test
+*.out
+coverage.*
+go.work
+go.work.sum
+
+# --- Python (ingest-django) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+ingest-django/staticfiles/
+ingest-django/media/
+*.sqlite3
+db.sqlite3
+
+# --- Node (frontend) ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+
+# --- Generated ---
+frontend/src/api/schema.d.ts
+ingest-openapi.yml
+
+# --- Docker / local data ---
+pgdata/
+docker-data/
+*.log

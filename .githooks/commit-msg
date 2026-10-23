@@ -1,0 +1,16 @@
+#!/bin/sh
+# Commit message rules: English only, no AI attribution.
+msg=$(grep -v '^#' "$1")
+
+if printf '%s\n' "$msg" | grep -qiE '^co-authored-by:|generated with|🤖'; then
+  echo "Commit rejected: remove Co-Authored-By / 'Generated with' from the message."
+  echo "Коммит отклонён: уберите строку Co-Authored-By / Generated with из сообщения."
+  exit 1
+fi
+
+# Cyrillic letters are two bytes starting with 0xD0 or 0xD1 in UTF-8.
+if printf '%s\n' "$msg" | LC_ALL=C grep -q "$(printf '[\320\321]')"; then
+  echo "Commit rejected: commit messages must be in English, e.g. \"G3: add login and DB sessions\"."
+  echo "Коммит отклонён: сообщение коммита пишем только на английском."
+  exit 1
+fi
