@@ -33,7 +33,7 @@ core — это всё, что считает и отдаёт результат
 
 | Что | Библиотека |
 | --- | --- |
-| Язык | Go 1.23 |
+| Язык | Go 1.26 (свежие pgx, goose, prometheus и chi требуют не ниже 1.24–1.26) |
 | HTTP | `net/http` + `github.com/go-chi/chi/v5`, `chi/middleware` |
 | БД | `github.com/jackc/pgx/v5` (`pgxpool`, `pgx.Conn.WaitForNotification`) |
 | Миграции схемы `core` | `github.com/pressly/goose/v3` + `embed` |
@@ -495,7 +495,7 @@ prolongo_expected_loss_eur 123.45
 ## 17. Dockerfile
 
 ```dockerfile
-FROM golang:1.23-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
