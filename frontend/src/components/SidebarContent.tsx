@@ -1,5 +1,7 @@
 import { Database, LayoutDashboard, LogOut, SlidersHorizontal, Users } from 'lucide-react';
 import { Link, NavLink } from 'react-router-dom';
+import { useLogout } from '@/api/mutations';
+import { useMe } from '@/api/queries';
 import { cn } from '@/lib/utils';
 import { Logo } from './Logo';
 import { LiveDot } from './LiveDot';
@@ -14,6 +16,11 @@ const NAV_ITEMS = [
 
 /** Sidebar body, shared by the fixed desktop sidebar and the mobile menu. */
 export function SidebarContent() {
+  const { data } = useMe();
+  const logout = useLogout();
+  const user = data?.user;
+  const initial = (user?.displayName ?? user?.username ?? '?').charAt(0).toUpperCase();
+
   return (
     <div className="flex h-full flex-col gap-6 p-5">
       <Link to="/" aria-label="Prolongo, на главную" className="rounded-xl">
@@ -47,20 +54,21 @@ export function SidebarContent() {
             aria-hidden="true"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[14px] font-semibold text-accent-text"
           >
-            А
+            {initial}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[14px] font-semibold">Администратор</div>
-            <div className="truncate text-[12px] text-ink-3">admin</div>
+            <div className="truncate text-[14px] font-semibold">{user?.displayName ?? '—'}</div>
+            <div className="truncate text-[12px] text-ink-3">{user?.username}</div>
           </div>
-          {/* Real sign-out (POST /auth/logout) arrives with task F2. */}
-          <Link
-            to="/login"
+          <button
+            type="button"
             aria-label="Выйти"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-seg text-ink-2 hover:bg-surface"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-seg text-ink-2 hover:bg-surface disabled:opacity-60"
           >
             <LogOut size={18} strokeWidth={2} aria-hidden="true" />
-          </Link>
+          </button>
         </div>
       </div>
     </div>
