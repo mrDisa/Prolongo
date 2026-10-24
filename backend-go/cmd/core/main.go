@@ -18,6 +18,8 @@ import (
 	"github.com/mrDisa/Prolongo/backend-go/internal/auth"
 	"github.com/mrDisa/Prolongo/backend-go/internal/config"
 	"github.com/mrDisa/Prolongo/backend-go/internal/db"
+	"github.com/mrDisa/Prolongo/backend-go/internal/live"
+	"github.com/mrDisa/Prolongo/backend-go/internal/recalc"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 	"github.com/mrDisa/Prolongo/backend-go/internal/store"
 )
@@ -54,10 +56,11 @@ const (
 	dbConnectTimeout  = 60 * time.Second
 	sourceWaitTimeout = 60 * time.Second
 	sessionCleanup    = time.Hour
+	recalcMaxDelay    = 2 * time.Second // a burst of changes never delays the result by more than this
 )
 
 // run prepares the database and serves HTTP until ctx is cancelled.
-// Order: PostgreSQL → Django's source schema → core migrations → source data → model settings → admin user → HTTP.
+// Order: PostgreSQL → Django's source schema → core migrations → model settings → first calculation → admin user → HTTP.
 func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	connectCtx, cancel := context.WithTimeout(ctx, dbConnectTimeout)
 	pool, err := db.Open(connectCtx, cfg.DatabaseURL, logger)
@@ -75,22 +78,36 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	st := store.New(pool)
-	// Smoke check that core sees ingest's data. G7 replaces this with the recalculation worker.
-	ds, err := st.LoadDataset(ctx)
-	if err != nil {
-		return err
-	}
-	accounts, services, transactions := ds.Counts()
-	logger.Info("source data loaded",
-		slog.Int("accounts", accounts), slog.Int("services", services), slog.Int("transactions", transactions),
-		slog.Time("latest_timestamp", ds.LatestTimestamp), slog.Any("source_time", ds.SourceTime))
-
 	settingsSvc := settings.NewService(st)
 	current, err := settingsSvc.Ensure(ctx)
 	if err != nil {
 		return err
 	}
 	logger.Info("model settings ready", slog.Int64("version", current.Version), slog.Int("horizon_days", current.HorizonDays))
+
+	// One goroutine recalculates; everyone else reads its latest Snapshot.
+	worker := recalc.New(recalc.Config{
+		Debounce: time.Duration(cfg.RecalcDebounceMS) * time.Millisecond,
+		MaxDelay: recalcMaxDelay,
+		Interval: time.Duration(cfg.RecalcIntervalSeconds) * time.Second,
+	}, st, settingsSvc, logger)
+	worker.OnPublish(func(ctx context.Context, snap *recalc.Snapshot) {
+		if err := st.UpsertRiskDaily(ctx, riskDaily(snap)); err != nil {
+			logger.Error("risk_daily not saved", slog.Any("error", err))
+		}
+	})
+	if err := worker.Recalculate(ctx, recalc.ReasonStartup); err != nil {
+		return err // without a first result there is nothing to serve
+	}
+	go worker.Run(ctx)
+
+	listener := &live.Listener{
+		URL:         cfg.DatabaseURL,
+		Logger:      logger,
+		OnChange:    func() { worker.Trigger(recalc.ReasonData) },
+		OnReconnect: func() { worker.Trigger(recalc.ReasonData) }, // changes made while offline were not announced
+	}
+	go listener.Run(ctx)
 
 	authSvc, err := auth.NewService(st, time.Duration(cfg.SessionTTLHours)*time.Hour)
 	if err != nil {
@@ -106,10 +123,22 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Logger:      logger,
 		Auth:        authSvc,
 		Settings:    settingsSvc,
+		Recalc:      worker,
 		Cookie:      api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
 		OIDCEnabled: cfg.OIDC.Enabled,
 	})
 	return serve(ctx, cfg.HTTPAddr, handler, logger)
+}
+
+// riskDaily turns a calculation into the day's row of core.risk_daily (day = model "now").
+func riskDaily(snap *recalc.Snapshot) store.RiskDaily {
+	s := snap.Summary
+	return store.RiskDaily{
+		Day:           snap.Now,
+		CustomersHigh: s.Customers.High, CustomersMedium: s.Customers.Medium,
+		CustomersLow: s.Customers.Low, CustomersNone: s.Customers.NoScore,
+		ServicesAtRisk: s.Services.AtRisk, ExpectedLossCents: s.Money.ExpectedLoss,
+	}
 }
 
 // serve runs the HTTP server until ctx is cancelled, then lets running requests finish.
