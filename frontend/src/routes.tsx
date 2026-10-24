@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router-dom';
+import { RequireAuth } from '@/components/RequireAuth';
 import { AppLayout } from '@/layouts/AppLayout';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import Customer from '@/pages/Customer';
@@ -15,15 +16,20 @@ export const router = createBrowserRouter([
     children: [{ path: '/login', element: <Login /> }],
   },
   {
-    // The session guard is added to this layout in task F2.
-    element: <AppLayout />,
+    // Everything below needs a session.
+    element: <RequireAuth />,
     children: [
-      { path: '/', element: <Overview /> },
-      { path: '/customers', element: <Customers /> },
-      { path: '/customers/:id', element: <Customer /> },
-      { path: '/model', element: <Model /> },
-      { path: '/data', element: <Data /> },
-      { path: '*', element: <NotFound /> },
+      {
+        element: <AppLayout />,
+        children: [
+          { path: '/', element: <Overview /> },
+          { path: '/customers', element: <Customers /> },
+          { path: '/customers/:id', element: <Customer /> },
+          { path: '/model', element: <Model /> },
+          { path: '/data', element: <Data /> },
+          { path: '*', element: <NotFound /> },
+        ],
+      },
     ],
   },
 ]);

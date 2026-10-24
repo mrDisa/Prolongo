@@ -396,6 +396,7 @@ r.Get("/internal/auth/verify", authVerify)       // для nginx
 r.Get("/metrics", metricsHandler)                // bearer или сессия
 r.Route("/api/v1", func(r chi.Router) {
     r.Post("/auth/login", login)
+    r.Get("/auth/config", authConfig)            // {"oidcEnabled": ...}, без сессии
     r.Get("/auth/oidc/login", oidcLogin)
     r.Get("/auth/oidc/callback", oidcCallback)
     r.Get("/docs", swaggerUI); r.Get("/docs/*", swaggerUI)
