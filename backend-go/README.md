@@ -2,7 +2,9 @@
 
 Расчёт риска и денег, API для панели, авторизация, SSE, `/metrics`, Swagger.
 
-ТЗ: [docs/ТЗ_BACKEND_GO.md](../docs/ТЗ_BACKEND_GO.md). Готово: G1 «Каркас», G2 «openapi.yml», G3 «Миграции core + авторизация», G4 «Чтение данных», G5 «Признаки + движок + деньги», G6 «Настройки», G7 «Пересчёт + LISTEN», G8 «API чтения», G8.1 «Горизонт на лету + предпросмотр», G9 «SSE», G10 «/metrics», G11 «churn-timeline», G12 «OIDC». Следующая задача — G13 «MODEL.md и ADD_FEATURE.md».
+ТЗ: [docs/ТЗ_BACKEND_GO.md](../docs/ТЗ_BACKEND_GO.md). Готово: G1 «Каркас», G2 «openapi.yml», G3 «Миграции core + авторизация», G4 «Чтение данных», G5 «Признаки + движок + деньги», G6 «Настройки», G7 «Пересчёт + LISTEN», G8 «API чтения», G8.1 «Горизонт на лету + предпросмотр», G9 «SSE», G10 «/metrics», G11 «churn-timeline», G12 «OIDC», G13 «Документация». Все задачи Go-части выполнены.
+
+Как считается риск — [docs/MODEL.md](../docs/MODEL.md). Как добавить признак — [docs/ADD_FEATURE.md](../docs/ADD_FEATURE.md).
 
 ## Локальный запуск
 
