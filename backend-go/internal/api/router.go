@@ -44,6 +44,7 @@ func NewRouter(d Deps) http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", h.login)
+		r.Get("/auth/config", h.authConfig) // public: the login screen has no session
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.requireSession)

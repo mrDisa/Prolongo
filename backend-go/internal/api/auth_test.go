@@ -111,6 +111,17 @@ func TestVerify(t *testing.T) {
 	assert.Empty(t, rec.Body.String())
 }
 
+func TestAuthConfigIsPublic(t *testing.T) {
+	d := testDeps(t, nil)
+	rec := do(NewRouter(d), http.MethodGet, "/api/v1/auth/config", "", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.JSONEq(t, `{"oidcEnabled":false}`, rec.Body.String())
+
+	d.OIDCEnabled = true
+	rec = do(NewRouter(d), http.MethodGet, "/api/v1/auth/config", "", nil)
+	assert.JSONEq(t, `{"oidcEnabled":true}`, rec.Body.String())
+}
+
 func TestCookieSecureFlag(t *testing.T) {
 	d := testDeps(t, nil)
 	d.Cookie.Secure = true

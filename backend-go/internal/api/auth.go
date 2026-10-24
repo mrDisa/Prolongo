@@ -68,6 +68,12 @@ func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": toUserJSON(user)})
 }
 
+// authConfig: GET /api/v1/auth/config, public. The login screen has no session yet,
+// so it learns here whether to show the "Sign in with SSO" button.
+func (h *handlers) authConfig(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]bool{"oidcEnabled": h.oidcEnabled})
+}
+
 // me: GET /api/v1/auth/me (behind requireSession).
 func (h *handlers) me(w http.ResponseWriter, r *http.Request) {
 	user, _ := auth.UserFrom(r.Context())
