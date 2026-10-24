@@ -23,6 +23,12 @@ services:
       interval: 5s
       retries: 30
 
+  simulator:
+    build: ./ingest-django
+    <<: *env
+    command: ["python", "manage.py", "simulate"]
+    depends_on: { ingest: { condition: service_healthy } }
+
   core:
     build: ./backend-go
     <<: *env

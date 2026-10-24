@@ -15,4 +15,5 @@ RUN useradd --create-home --uid 1000 app && mkdir -p staticfiles && chown -R app
 USER app
 
 EXPOSE 8001
-ENTRYPOINT ["./entrypoint.sh"]
+# CMD, not ENTRYPOINT: the simulator service overrides it with "python manage.py simulate"
+CMD ["./entrypoint.sh"]
