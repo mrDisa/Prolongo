@@ -26,3 +26,12 @@ export function levelLabel(customer: Pick<Customer, 'scoreStatus' | 'riskLevel'>
   if (customer.riskLevel === 'medium') return 'Средний';
   return 'Низкий';
 }
+
+export function noScoreReasonLabel(reason: components['schemas']['NoScoreReason'] | null): string {
+  switch (reason) {
+    case 'no_services': return 'Нет данных об услугах';
+    case 'churned': return 'Клиент уже ушёл';
+    case 'blocked': return 'Все услуги заблокированы';
+    default: return 'Нет оценки';
+  }
+}

@@ -11,11 +11,13 @@ interface ScoreWaterfallProps {
 const LEVEL_COLORS = { high: 'bg-high', medium: 'bg-med', low: 'bg-low' } as const;
 
 export function ScoreWaterfall({ contributions, score, level }: ScoreWaterfallProps) {
-  let cumulative = 0;
+  let rawTotal = 0;
+  const clamp = (value: number) => Math.min(100, Math.max(0, value));
   const rows = contributions.map((contribution) => {
-    const start = cumulative;
-    cumulative = Math.min(100, Math.max(0, cumulative + contribution.points));
-    return { contribution, start, end: cumulative };
+    const start = clamp(rawTotal);
+    rawTotal += contribution.points;
+    const end = clamp(rawTotal);
+    return { contribution, start, end };
   });
 
   return (

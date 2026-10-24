@@ -29,12 +29,21 @@ export function formatDate(value: string): string {
 }
 
 export function formatDaysLeft(days: number): string {
-  if (days < 0) return `Истекла ${Math.round(Math.abs(days))} дн. назад`;
-  if (days < 1) {
-    const minutes = Math.max(1, Math.round(days * 24 * 60));
-    if (minutes < 60) return `Через ${minutes} мин`;
-    return `Через ${Math.round(minutes / 60)} ч.`;
+  const shortDuration = (durationDays: number) => {
+    const minutes = Math.max(1, Math.round(durationDays * 24 * 60));
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (hours && remainingMinutes) return `${hours} ч. ${remainingMinutes} мин`;
+    if (hours) return `${hours} ч.`;
+    return `${minutes} мин`;
+  };
+
+  if (days < 0) {
+    const elapsed = Math.abs(days);
+    if (elapsed < 1) return `Истекла ${shortDuration(elapsed)} назад`;
+    return `Истекла ${Math.round(elapsed)} дн. назад`;
   }
+  if (days < 1) return `Через ${shortDuration(days)}`;
   return `Через ${Math.round(days)} дн.`;
 }
 

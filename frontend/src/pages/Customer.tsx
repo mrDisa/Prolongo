@@ -14,7 +14,8 @@ import { RiskBadge } from '@/components/RiskBadge';
 import { ScoreScale } from '@/components/ScoreScale';
 import { ScoreWaterfall } from '@/components/ScoreWaterfall';
 import { formatDate, formatDaysLeft, formatEUR, formatRelative } from '@/lib/format';
-import { levelLabel } from '@/lib/levels';
+import { levelLabel, noScoreReasonLabel } from '@/lib/levels';
+import { useHorizon } from '@/lib/period';
 
 type CustomerDetail = components['schemas']['CustomerDetail'];
 type Service = components['schemas']['ServiceItem'];
@@ -57,19 +58,8 @@ const SOURCE_LABELS: Record<components['schemas']['EventSource'], string> = {
   demo_backfill: 'демо-история',
 };
 
-function validHorizon(value: string | null): number | undefined {
-  if (value === null) return undefined;
-  const horizon = Number(value);
-  return Number.isInteger(horizon) && horizon >= 1 && horizon <= 365 ? horizon : undefined;
-}
-
 function noScoreMessage(customer: CustomerDetail): string {
-  switch (customer.noScoreReason) {
-    case 'no_services': return 'Нет данных об услугах';
-    case 'churned': return 'Клиент уже ушёл';
-    case 'blocked': return 'Все услуги заблокированы';
-    default: return 'Оценка риска недоступна';
-  }
+  return noScoreReasonLabel(customer.noScoreReason);
 }
 
 function summaryLine(customer: CustomerDetail): string {
@@ -77,10 +67,10 @@ function summaryLine(customer: CustomerDetail): string {
   const liveCount = services.filter((service) => LIVE_STATUSES.includes(service.status)).length;
   const serviceText = services.length === 0
     ? 'Услуг пока нет.'
-    : `${liveCount} из ${services.length} услуг живые${services.every((service) => service.status === services[0].status) ? `, ${STATUS_SUMMARIES[services[0].status]}` : '.'}`;
+    : `${liveCount} из ${services.length} услуг живые${services.every((service) => service.status === services[0].status) ? `, ${STATUS_SUMMARIES[services[0].status]}` : ''}.`;
 
-  if (customer.scoreStatus === 'no_score') return `${serviceText} ${noScoreMessage(customer)}.`;
-  const mainReason = customer.contributions[0]?.title.toLocaleLowerCase('ru-RU') ?? 'нет выраженных факторов риска';
+  if (customer.scoreStatus === 'no_score') return serviceText;
+  const mainReason = customer.contributions.find((contribution) => contribution.points > 0)?.title.toLocaleLowerCase('ru-RU') ?? 'нет выраженных факторов риска';
   return `${serviceText} Главная причина — ${mainReason}.`;
 }
 
@@ -126,13 +116,16 @@ function ServiceTable({ services }: { services: Service[] }) {
   );
 }
 
-function CustomerContent({ customer }: { customer: CustomerDetail }) {
+function CustomerContent({ customer, thresholds }: {
+  customer: CustomerDetail;
+  thresholds: { medium: number; high: number };
+}) {
   const [copied, setCopied] = useState<'success' | 'error' | null>(null);
   const noScore = customer.scoreStatus === 'no_score';
-  const hasRiskLevel = customer.riskLevel !== null;
+  const hasScore = customer.riskLevel !== null && customer.riskScore !== null && customer.loyalty !== null && customer.probability !== null;
 
   async function copyForCrm() {
-    const reason = noScore ? noScoreMessage(customer) : customer.contributions[0]?.text ?? 'Нет выраженных факторов риска';
+    const reason = noScore ? noScoreMessage(customer) : customer.contributions.find((contribution) => contribution.points > 0)?.text ?? 'Нет выраженных факторов риска';
     const recommendations = customer.recommendations.map(({ action }, index) => `${index + 1}. ${action}`).join('\n');
     const text = [
       `${customer.email} · клиент #${customer.id}`,
@@ -152,7 +145,7 @@ function CustomerContent({ customer }: { customer: CustomerDetail }) {
 
   return (
     <>
-      <section className="grid gap-6 rounded-hero bg-surface p-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.85fr)]" aria-label="Сводка по клиенту">
+      <section className={`grid gap-6 rounded-hero bg-surface p-6 ${hasScore ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.85fr)]' : ''}`} aria-label="Сводка по клиенту">
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <RiskBadge customer={customer} />
@@ -161,22 +154,23 @@ function CustomerContent({ customer }: { customer: CustomerDetail }) {
           <h1 className="mt-3 break-all font-display text-[28px] font-semibold tracking-[-0.02em]">{customer.email}</h1>
           <p className="mt-3 max-w-2xl text-[15px] leading-6 text-ink-2">{summaryLine(customer)}</p>
         </div>
-        <div className="rounded-tile-lg bg-surface-2 p-5">
-          {hasRiskLevel && customer.riskScore !== null && customer.loyalty !== null && customer.probability !== null ? (
-            <>
-              <div className="flex items-baseline justify-between gap-3">
-                <h2 className="text-[14px] font-semibold text-ink-2">Risk-score</h2>
-                <p className="font-display text-[24px] font-semibold">{customer.riskScore}<span className="text-[15px] text-ink-3"> / 100</span></p>
-              </div>
-              <div className="mt-5"><ScoreScale score={customer.riskScore} loyalty={customer.loyalty} probability={customer.probability} /></div>
-            </>
-          ) : (
-            <div className="flex h-full min-h-28 flex-col justify-center">
-              <h2 className="font-display text-[20px] font-semibold">Оценки риска нет</h2>
-              <p className="mt-2 text-[14px] text-ink-2">{noScoreMessage(customer)}</p>
+        {hasScore ? (
+          <div className="rounded-tile-lg bg-surface-2 p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="text-[14px] font-semibold text-ink-2">Risk-score</h2>
+              <p className="font-display text-[24px] font-semibold">{customer.riskScore}<span className="text-[15px] text-ink-3"> / 100</span></p>
             </div>
-          )}
-        </div>
+            <div className="mt-5">
+              <ScoreScale
+                score={customer.riskScore!}
+                loyalty={customer.loyalty!}
+                probability={customer.probability!}
+                mediumThreshold={thresholds.medium}
+                highThreshold={thresholds.high}
+              />
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Деньги клиента">
@@ -197,10 +191,11 @@ function CustomerContent({ customer }: { customer: CustomerDetail }) {
       </section>
 
       <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.9fr)]">
+        {noScore ? (
+          <div className="xl:col-span-2"><EmptyState title="Оценки нет" hint={noScoreMessage(customer)} /></div>
+        ) : null}
         <div className="space-y-6">
-          {noScore ? (
-            <EmptyState title="Оценки нет" hint={noScoreMessage(customer)} />
-          ) : customer.riskScore !== null && customer.riskLevel !== null ? (
+          {!noScore && customer.riskScore !== null && customer.riskLevel !== null ? (
             <ScoreWaterfall contributions={customer.contributions} score={customer.riskScore} level={customer.riskLevel} />
           ) : null}
 
@@ -233,9 +228,7 @@ function CustomerContent({ customer }: { customer: CustomerDetail }) {
         </div>
 
         <aside className="space-y-6">
-          {noScore ? (
-            <EmptyState title="Оценки нет" hint={noScoreMessage(customer)} />
-          ) : customer.probability !== null ? (
+          {!noScore && customer.probability !== null ? (
             <MoneySplit money={customer.money} probability={customer.probability} />
           ) : null}
 
@@ -266,24 +259,35 @@ function CustomerContent({ customer }: { customer: CustomerDetail }) {
 export default function Customer() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
+  const { horizonDays } = useHorizon();
   const customerId = Number(id);
-  const horizonDays = validHorizon(searchParams.get('h'));
   const validId = Number.isInteger(customerId) && customerId > 0;
   const customerQuery = useQuery({
-    queryKey: ['customer', customerId, horizonDays ?? null],
+    queryKey: ['customer', customerId, horizonDays],
     enabled: validId,
     queryFn: () => unwrap(api.GET('/api/v1/customers/{id}', {
-      params: { path: { id: customerId }, query: horizonDays === undefined ? {} : { horizonDays } },
+      params: { path: { id: customerId }, query: { horizonDays } },
     })),
   });
+  const settingsQuery = useQuery({
+    queryKey: ['model-settings'],
+    queryFn: () => unwrap(api.GET('/api/v1/model/settings')),
+    staleTime: 60_000,
+  });
+  const thresholds = settingsQuery.data?.thresholds ?? { medium: 30, high: 60 };
 
   return (
     <>
-      <Link to="/customers" className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-[14px] font-semibold text-accent-text hover:bg-surface-2">
+      <Link
+        to={{ pathname: '/customers', search: searchParams.toString() ? `?${searchParams.toString()}` : '' }}
+        className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-[14px] font-semibold text-accent-text hover:bg-surface-2"
+      >
         <ArrowLeft size={18} aria-hidden="true" /> Все клиенты
       </Link>
       {!validId ? (
         <ErrorState title="Клиент не найден" message="В адресе указан некорректный ID клиента." />
+      ) : customerQuery.data ? (
+        <CustomerContent customer={customerQuery.data} thresholds={thresholds} />
       ) : customerQuery.isPending ? (
         <CustomerSkeleton />
       ) : customerQuery.isError ? (
@@ -292,8 +296,6 @@ export default function Customer() {
           message={customerQuery.error instanceof Error ? customerQuery.error.message : undefined}
           onRetry={() => void customerQuery.refetch()}
         />
-      ) : customerQuery.data ? (
-        <CustomerContent customer={customerQuery.data} />
       ) : null}
     </>
   );
