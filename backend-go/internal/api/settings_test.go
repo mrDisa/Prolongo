@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrDisa/Prolongo/backend-go/internal/features"
 )
 
 func decodeSettings(t *testing.T, body []byte) modelSettingsJSON {
@@ -26,7 +28,7 @@ func TestGetSettings(t *testing.T) {
 	assert.Equal(t, 30, s.HorizonDays)
 	assert.Equal(t, thresholdsJSON{Medium: 30, High: 60}, s.Thresholds)
 	assert.Equal(t, clockJSON{Mode: "data"}, s.Clock)
-	require.Len(t, s.Features, 9)
+	require.Len(t, s.Features, len(features.All()), "every registered feature, nothing to update when one is added")
 
 	var pw featureSettingJSON
 	for _, f := range s.Features {

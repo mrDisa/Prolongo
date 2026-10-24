@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrDisa/Prolongo/backend-go/internal/engine"
+	"github.com/mrDisa/Prolongo/backend-go/internal/features"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings/settingstest"
 )
@@ -94,7 +95,7 @@ func TestMergeWithRegistry(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(mem.Data(), &doc))
 	assert.Contains(t, doc.Features, "retired_feature", "unknown keys are never deleted")
-	assert.Len(t, doc.Features, 10, "9 registered + 1 retired")
+	assert.Len(t, doc.Features, len(features.All())+1, "every registered feature + 1 retired")
 }
 
 func TestConcurrentPatchesAreNotLost(t *testing.T) {

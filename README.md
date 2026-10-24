@@ -86,9 +86,9 @@ docker compose --profile grafana up --build
                      Prometheus ──► core /metrics
 ```
 
-- Модель риска и денежная оценка — `docs/ОБЩЕЕ_ТЗ.md`, разделы 4–5.
+- Модель риска и денежная оценка: формулы, веса и почему такие, допущения — [`docs/MODEL.md`](docs/MODEL.md).
 - Контракт API — `openapi.yml` и `docs/ОБЩЕЕ_ТЗ.md`, раздел 7.
-- Как добавить новый признак риска — `docs/ТЗ_BACKEND_GO.md`, раздел 19 (после G13 — `docs/ADD_FEATURE.md`).
+- Как добавить новый признак риска — [`docs/ADD_FEATURE.md`](docs/ADD_FEATURE.md).
 
 ## Структура
 

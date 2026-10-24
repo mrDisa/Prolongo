@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrDisa/Prolongo/backend-go/internal/features"
 )
 
 func postPreview(t *testing.T, h http.Handler, cookie *http.Cookie, body string) (int, previewJSON, string) {
@@ -44,7 +46,7 @@ func TestPreviewThresholds(t *testing.T) {
 		}
 	}
 
-	require.Len(t, p.Features, 9, "every feature, even ones that hit nobody")
+	require.Len(t, p.Features, len(features.All()), "every feature, even ones that hit nobody")
 	byKey := map[string]previewFeatureJSON{}
 	for _, f := range p.Features {
 		byKey[f.Key] = f
