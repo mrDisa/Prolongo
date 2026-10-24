@@ -9,8 +9,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .exceptions import BadRequest
-from .models import StatusEvent
+from .models import SimulatorState, StatusEvent
 from .services.events import apply_events
+from .services.simulator import current_data_time, get_state, run_tick
 from .services.snapshot import apply_snapshot
 
 EVENT_SOURCES = ["seed", "snapshot", "event", "admin", "simulator", "sql", "demo_backfill"]
@@ -91,3 +92,49 @@ class EventsView(APIView):
 
     def post(self, request):
         return Response(apply_events(request.data))
+
+
+class SimulatorActionDTO(serializers.Serializer):
+    action = serializers.ChoiceField(
+        ["start", "stop", "tick"], error_messages={"invalid_choice": "Недопустимое значение: {input}"}
+    )
+    intervalSeconds = serializers.IntegerField(required=False, min_value=1, max_value=60)
+    tickHours = serializers.FloatField(required=False, min_value=0.25, max_value=168)
+
+
+def simulator_payload(state):
+    return {
+        "running": state.running,
+        "intervalSeconds": state.interval_seconds,
+        "tickHours": state.tick_hours,
+        "eventsGenerated": state.events_generated,
+        "dataTime": iso_z(current_data_time()),
+    }
+
+
+class SimulatorView(APIView):
+    """GET: simulator state. POST: start / stop / one tick, optionally with new interval and tick size."""
+
+    parser_classes = [JSONParser]
+
+    def get(self, request):
+        return Response(simulator_payload(get_state()))
+
+    def post(self, request):
+        command = SimulatorActionDTO(data=request.data)
+        command.is_valid(raise_exception=True)
+        params = command.validated_data
+
+        get_state()  # make sure the row exists before locking it
+        state = SimulatorState.objects.select_for_update().get(id=1)
+        if "intervalSeconds" in params:
+            state.interval_seconds = params["intervalSeconds"]
+        if "tickHours" in params:
+            state.tick_hours = params["tickHours"]
+        if params["action"] in ("start", "stop"):
+            state.running = params["action"] == "start"
+        state.save()
+
+        if params["action"] == "tick":
+            run_tick()
+        return Response(simulator_payload(get_state()))

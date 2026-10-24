@@ -53,6 +53,12 @@ curl -c cookies.txt -H 'Content-Type: application/json' -d '{"username":"admin",
 curl -b cookies.txt -X PUT -F file=@data/test-data/data.json http://localhost:8080/api/v1/source/snapshot
 ```
 
+Запустить симулятор потока изменений — каждые 3 секунды время источника уходит на 6 часов вперёд, услуги истекают, клиенты пополняют баланс, панель обновляется сама (`"stop"` — остановить, `"tick"` — один шаг):
+
+```bash
+curl -b cookies.txt -H 'Content-Type: application/json' -d '{"action":"start"}' http://localhost:8080/api/v1/source/simulator
+```
+
 ### Дополнительно (в разработке)
 
 Режимы описаны заранее и заработают по мере готовности задач:
