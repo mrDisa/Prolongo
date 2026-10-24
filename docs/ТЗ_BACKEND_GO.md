@@ -210,7 +210,7 @@ SELECT id, amount, status, "performedAt", "createdAt", type, "serviceId" FROM pu
 SELECT data_time FROM public.source_clock WHERE id = 1;   -- может не быть строки → SourceTime = nil
 ```
 
-Готово, когда: на данных организаторов `Load` возвращает 10 / 30 / 100 и `LatestTimestamp` = 2026-10-19T15:00:00Z или чуть позже (максимум performedAt).
+Готово, когда: на данных организаторов `Load` возвращает 10 / 30 / 100 и `LatestTimestamp` = 2026-10-19T14:35:53Z (максимум createdAt / performedAt — тот же «now», что в эталоне `ОБЩЕЕ_ТЗ.md` §4.2.1 и в `source_clock` после загрузки снимка).
 
 ## 8. Признаки (`internal/features`)
 
