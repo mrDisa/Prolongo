@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,4 +85,23 @@ func TestUpdateSettingsLocksTheRow(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 1+workers, row.Version)
 	assert.JSONEq(t, `{"n":10}`, string(row.Data), "no lost update")
+}
+
+func TestUpsertRiskDaily(t *testing.T) {
+	s, pool := setup(t)
+	ctx := context.Background()
+	day := time.Date(2026, 10, 19, 14, 35, 53, 0, time.UTC)
+
+	require.NoError(t, s.UpsertRiskDaily(ctx, store.RiskDaily{Day: day, CustomersHigh: 2, ServicesAtRisk: 10, ExpectedLossCents: 703267}))
+	require.NoError(t, s.UpsertRiskDaily(ctx, store.RiskDaily{Day: day.Add(3 * time.Hour), CustomersHigh: 3, ServicesAtRisk: 11, ExpectedLossCents: 800000}))
+	require.NoError(t, s.UpsertRiskDaily(ctx, store.RiskDaily{Day: day.AddDate(0, 0, 1), CustomersHigh: 1}))
+
+	var rows int
+	var high, atRisk int
+	var loss int64
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM core.risk_daily`).Scan(&rows))
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT customers_high, services_at_risk, expected_loss_cents FROM core.risk_daily WHERE day = '2026-10-19'`).Scan(&high, &atRisk, &loss))
+	assert.Equal(t, 2, rows, "one row per day")
+	assert.Equal(t, [3]int64{3, 11, 800000}, [3]int64{int64(high), int64(atRisk), loss}, "the latest calculation of the day wins")
 }
