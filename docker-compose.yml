@@ -34,6 +34,8 @@ services:
   core:
     build: ./backend-go
     <<: *env
+    # passed explicitly so that `OIDC_ENABLED=1 docker compose --profile oidc up` reaches core
+    environment: { OIDC_ENABLED: "${OIDC_ENABLED:-0}" }
     depends_on: { ingest: { condition: service_healthy } }
     healthcheck:
       test: ["CMD", "/core", "-healthcheck"]
@@ -62,6 +64,24 @@ services:
     profiles: ["grafana"]
     ports: ["3000:3000"]
     volumes: ["./deploy/grafana:/etc/grafana/provisioning:ro"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    profiles: ["oidc"]
+    # Tokens always carry iss=http://localhost:8081/realms/prolongo (what the browser sees);
+    # core reaches the same realm inside the network at http://keycloak:8081 (backchannel).
+    command:
+      - start-dev
+      - --import-realm
+      - --http-port=8081
+      - --hostname=http://localhost:8081
+      - --hostname-backchannel-dynamic=true
+    environment:
+      # Keycloak 25 names; KC_BOOTSTRAP_ADMIN_* appear only in Keycloak 26
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports: ["8081:8081"]
+    volumes: ["./deploy/keycloak:/opt/keycloak/data/import:ro"]
 
 volumes:
   pgdata:

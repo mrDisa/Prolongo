@@ -1,0 +1,56 @@
+{
+  "realm": "prolongo",
+  "displayName": "Prolongo",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "ru",
+    "en"
+  ],
+  "defaultLocale": "ru",
+  "clients": [
+    {
+      "clientId": "prolongo",
+      "name": "Prolongo",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "prolongo-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/api/v1/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8080/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "marketer",
+      "enabled": true,
+      "email": "marketer@example.test",
+      "emailVerified": true,
+      "firstName": "Маркетолог",
+      "lastName": "Prolongo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "marketer123",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

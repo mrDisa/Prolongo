@@ -77,7 +77,7 @@ docker compose --profile grafana up --build
 
 | Команда | Что даст | Готово после |
 | --- | --- | --- |
-| `OIDC_ENABLED=1 docker compose --profile oidc up` | Вход через Keycloak (SSO) | D15, G12 |
+| `OIDC_ENABLED=1 docker compose --profile oidc up` | Вход через Keycloak (SSO): `marketer` / `marketer123`; Keycloak на http://localhost:8081 уже поднимается, вход в панель через него — после G12 | G12 |
 
 ## Как это устроено
 
