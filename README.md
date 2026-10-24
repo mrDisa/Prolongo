@@ -29,7 +29,7 @@ docker compose up --build
 | http://localhost:8080 | Панель маркетолога |
 | http://localhost:8080/api/v1/docs | Swagger (после входа) |
 | http://localhost:8080/admin/ | Админка данных, без второго входа (после входа в панель) |
-| http://localhost:8080/metrics | Метрики Prometheus (bearer `METRICS_TOKEN` или сессия) — после G10 |
+| http://localhost:8080/metrics | Метрики Prometheus (bearer `METRICS_TOKEN` или сессия) |
 | http://localhost:8080/prometheus/ | UI Prometheus (после входа) |
 
 Без входа API, админка и UI Prometheus отвечают `401`.

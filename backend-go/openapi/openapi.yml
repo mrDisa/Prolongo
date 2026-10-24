@@ -641,7 +641,7 @@ paths:
             text/plain:
               schema: { type: string, description: Метрики Prometheus }
               example: |
-                # HELP prolongo_customers Customers by risk level
+                # HELP prolongo_customers Customers by risk level (none: no score)
                 # TYPE prolongo_customers gauge
                 prolongo_customers{level="high"} 2
                 prolongo_customers{level="medium"} 2

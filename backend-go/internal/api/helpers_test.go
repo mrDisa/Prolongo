@@ -17,6 +17,7 @@ import (
 	"github.com/mrDisa/Prolongo/backend-go/internal/auth/authtest"
 	"github.com/mrDisa/Prolongo/backend-go/internal/domain"
 	"github.com/mrDisa/Prolongo/backend-go/internal/engine"
+	"github.com/mrDisa/Prolongo/backend-go/internal/metrics"
 	"github.com/mrDisa/Prolongo/backend-go/internal/recalc"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings/settingstest"
@@ -37,9 +38,11 @@ func testDeps(t *testing.T, logger *slog.Logger) Deps {
 	settingsSvc := settings.NewService(&settingstest.MemStore{})
 	_, err = settingsSvc.Ensure(context.Background())
 	require.NoError(t, err)
+	snap := referenceSnapshot(t)
 	return Deps{
 		Logger: logger, Auth: svc, Settings: settingsSvc, Cookie: CookieConfig{Name: testCookie},
-		Current: referenceSnapshot(t), History: fakeHistory{},
+		Current: snap, History: fakeHistory{},
+		Metrics: metrics.Handler(metrics.New(snap, nil)), MetricsToken: testMetricsToken,
 	}
 }
 
@@ -47,6 +50,7 @@ func testDeps(t *testing.T, logger *slog.Logger) Deps {
 type staticSnapshot struct{ snap *recalc.Snapshot }
 
 func (s staticSnapshot) Current() *recalc.Snapshot { return s.snap }
+func (s staticSnapshot) Errors() int64             { return 0 }
 
 // referenceSnapshot is the calculation on the organizers' data.json with default settings,
 // as the worker would publish it (calcVersion 17 as in the openapi.yml examples).

@@ -50,7 +50,7 @@ func enabledFeatures(s Settings) []weighted {
 	var out []weighted
 	for _, f := range features.All() {
 		m := f.Meta()
-		if fs := s.feature(m); fs.Enabled && fs.Weight != 0 {
+		if fs := s.Feature(m); fs.Enabled && fs.Weight != 0 {
 			out = append(out, weighted{f: f, meta: m, weight: fs.Weight})
 		}
 	}

@@ -20,6 +20,7 @@ var protectedRoutes = []struct{ method, path string }{
 	{http.MethodGet, "/api/v1/analytics/summary"},
 	{http.MethodPost, "/api/v1/model/preview"},
 	{http.MethodGet, "/api/v1/stream"},
+	{http.MethodGet, "/metrics"}, // without a bearer token: the session decides
 }
 
 func TestLoginSetsSessionCookie(t *testing.T) {

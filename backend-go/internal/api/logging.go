@@ -9,7 +9,8 @@ import (
 )
 
 // requestLogger writes one JSON log line per request.
-// Health checks run every few seconds, so they are logged at debug level only.
+// Health checks and Prometheus scrapes run every few seconds, so when they succeed
+// they are logged at debug level only.
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +26,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			switch {
 			case status >= 500:
 				level = slog.LevelError
-			case r.URL.Path == "/healthz":
+			case status < 400 && (r.URL.Path == "/healthz" || r.URL.Path == "/metrics"):
 				level = slog.LevelDebug
 			}
 			logger.LogAttrs(r.Context(), level, "http request",
