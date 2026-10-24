@@ -13,3 +13,6 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/source/", include("source.urls")),
 ]
+
+handler404 = "source.exceptions.handler404"
+handler500 = "source.exceptions.handler500"
