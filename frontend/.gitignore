@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+.env.local
+*.tsbuildinfo
+# generated from ../openapi.yml by `npm run gen:api`
+src/api/schema.d.ts
