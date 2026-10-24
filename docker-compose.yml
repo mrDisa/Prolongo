@@ -16,6 +16,8 @@ services:
   ingest:
     build: ./ingest-django
     <<: *env
+    # env_file values ignore the shell, so `DEMO_DATA=1 docker compose up` is passed explicitly
+    environment: { DEMO_DATA: "${DEMO_DATA:-0}" }
     volumes: [./data:/app/data:ro]
     depends_on: { postgres: { condition: service_healthy } }
     healthcheck:
