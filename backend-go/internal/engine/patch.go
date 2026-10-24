@@ -76,7 +76,7 @@ func Apply(s Settings, p Patch) (Settings, ValidationErrors) {
 			errs.add("features."+key, "Неизвестный признак")
 			continue
 		}
-		cur := out.feature(f.Meta())
+		cur := out.Feature(f.Meta())
 		if fp.Weight != nil {
 			cur.Weight = *fp.Weight
 		}
@@ -116,7 +116,7 @@ func (s Settings) Validate() ValidationErrors {
 	}
 	for _, f := range features.All() {
 		m := f.Meta()
-		if w := s.feature(m).Weight; w < m.Min || w > m.Max {
+		if w := s.Feature(m).Weight; w < m.Min || w > m.Max {
 			errs.add("features."+m.Key+".weight", fmt.Sprintf("Допустимо от %g до %g", m.Min, m.Max))
 		}
 	}

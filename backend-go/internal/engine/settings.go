@@ -55,8 +55,8 @@ func DefaultSettings() Settings {
 	return s
 }
 
-// feature returns the effective setting of a feature: the override or the Meta default.
-func (s Settings) feature(m features.Meta) FeatureSetting {
+// Feature returns the effective setting of a feature: the override or the Meta default.
+func (s Settings) Feature(m features.Meta) FeatureSetting {
 	if fs, ok := s.Features[m.Key]; ok {
 		return fs
 	}
