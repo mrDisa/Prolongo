@@ -1,4 +1,6 @@
+from django import forms
 from django.contrib import admin
+from django.db import models
 
 from .models import Account, Service, StatusEvent, Transaction
 
@@ -23,8 +25,13 @@ def eur_column(field, title):
     return column
 
 
+class SourceModelAdmin(admin.ModelAdmin):
+    # The source schema stores email and names as `text`; show them as one-line inputs, not textareas.
+    formfield_overrides = {models.TextField: {"widget": forms.TextInput(attrs={"size": 40})}}
+
+
 @admin.register(Account)
-class AccountAdmin(admin.ModelAdmin):
+class AccountAdmin(SourceModelAdmin):
     list_display = (
         "id",
         "email",
@@ -41,7 +48,7 @@ class AccountAdmin(admin.ModelAdmin):
 
 
 @admin.register(Service)
-class ServiceAdmin(admin.ModelAdmin):
+class ServiceAdmin(SourceModelAdmin):
     list_display = (
         "id",
         "name",
@@ -62,7 +69,7 @@ class ServiceAdmin(admin.ModelAdmin):
 
 
 @admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin):
+class TransactionAdmin(SourceModelAdmin):
     list_display = ("id", "service", "type", "status", "amount", "created_at", "performed_at")
     list_filter = ("type", "status")
     list_select_related = ("service",)
