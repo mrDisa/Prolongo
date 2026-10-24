@@ -56,7 +56,7 @@ const (
 )
 
 // run prepares the database and serves HTTP until ctx is cancelled.
-// Order: PostgreSQL → Django's source schema → core migrations → admin user → HTTP.
+// Order: PostgreSQL → Django's source schema → core migrations → source data → admin user → HTTP.
 func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	connectCtx, cancel := context.WithTimeout(ctx, dbConnectTimeout)
 	pool, err := db.Open(connectCtx, cfg.DatabaseURL, logger)
@@ -73,7 +73,18 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 
-	authSvc, err := auth.NewService(store.New(pool), time.Duration(cfg.SessionTTLHours)*time.Hour)
+	st := store.New(pool)
+	// Smoke check that core sees ingest's data. G7 replaces this with the recalculation worker.
+	ds, err := st.LoadDataset(ctx)
+	if err != nil {
+		return err
+	}
+	accounts, services, transactions := ds.Counts()
+	logger.Info("source data loaded",
+		slog.Int("accounts", accounts), slog.Int("services", services), slog.Int("transactions", transactions),
+		slog.Time("latest_timestamp", ds.LatestTimestamp), slog.Any("source_time", ds.SourceTime))
+
+	authSvc, err := auth.NewService(st, time.Duration(cfg.SessionTTLHours)*time.Hour)
 	if err != nil {
 		return err
 	}

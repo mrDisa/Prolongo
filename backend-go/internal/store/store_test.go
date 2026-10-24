@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"io"
 	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -16,21 +15,15 @@ import (
 
 	"github.com/mrDisa/Prolongo/backend-go/internal/db"
 	"github.com/mrDisa/Prolongo/backend-go/internal/store"
+	"github.com/mrDisa/Prolongo/backend-go/internal/testdb"
 )
 
-// Integration tests against TEST_DATABASE_URL; skipped without it.
+// Integration tests on a throwaway database (internal/testdb); skipped without TEST_DATABASE_URL.
 func setup(t *testing.T) (*store.Store, *pgxpool.Pool) {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL is not set")
-	}
-	ctx := context.Background()
+	pool := testdb.New(t)
 	quiet := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	pool, err := db.Open(ctx, url, quiet)
-	require.NoError(t, err)
-	t.Cleanup(pool.Close)
-	require.NoError(t, db.Migrate(ctx, pool, quiet))
+	require.NoError(t, db.Migrate(context.Background(), pool, quiet))
 	return store.New(pool), pool
 }
 

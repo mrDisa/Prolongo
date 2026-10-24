@@ -2,7 +2,7 @@
 
 Расчёт риска и денег, API для панели, авторизация, SSE, `/metrics`, Swagger.
 
-ТЗ: [docs/ТЗ_BACKEND_GO.md](../docs/ТЗ_BACKEND_GO.md). Готово: G1 «Каркас», G2 «openapi.yml», G3 «Миграции core + авторизация». Следующая задача — G4 «Чтение данных».
+ТЗ: [docs/ТЗ_BACKEND_GO.md](../docs/ТЗ_BACKEND_GO.md). Готово: G1 «Каркас», G2 «openapi.yml», G3 «Миграции core + авторизация», G4 «Чтение данных». Следующая задача — G5 «Признаки + движок + деньги».
 
 ## Локальный запуск
 
@@ -42,7 +42,7 @@ make lint-openapi
 go test -race ./...
 ```
 
-Тесты базы и хранилища (`internal/db`, `internal/store`) идут на настоящей PostgreSQL и без `TEST_DATABASE_URL` пропускаются. Отдельная одноразовая база:
+Тесты базы и хранилища (`internal/db`, `internal/store`) идут на настоящей PostgreSQL и без `TEST_DATABASE_URL` пропускаются. Каждый тест создаёт рядом свою временную базу `prolongo_t_…` и удаляет её после себя (`internal/testdb`), поэтому пользователю нужно право `CREATE DATABASE`; схему и данные организаторов тест берёт из `data/test-data`. Сервер PostgreSQL для тестов:
 
 ```bash
 docker run -d --name prolongo-test-pg -e POSTGRES_DB=prolongo_test -e POSTGRES_USER=prolongo -e POSTGRES_PASSWORD=prolongo -p 127.0.0.1:5434:5432 postgres:16-alpine
