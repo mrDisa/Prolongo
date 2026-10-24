@@ -66,25 +66,25 @@ function UploadPanel() {
   return (
     <section className="rounded-block bg-surface p-5 sm:p-6">
       <div className="flex items-start gap-3">
-        <div className="rounded-field bg-accent/10 p-2 text-accent"><Upload aria-hidden="true" size={20} /></div>
+        <div className="rounded-field bg-accent-soft p-2 text-accent"><Upload aria-hidden="true" size={20} /></div>
         <div><h2 className="font-display text-[20px] font-semibold">Загрузить снимок</h2><p className="mt-1 text-[14px] text-ink-2">Полная замена данных из JSON-файла, до 20 МБ.</p></div>
       </div>
       <div
-        className={`mt-5 rounded-tile-lg border border-dashed p-6 text-center transition-colors ${dragging ? 'border-accent bg-accent/5' : 'border-line'}`}
+        className={`mt-5 rounded-tile-lg border border-dashed p-6 text-center transition-colors ${dragging ? 'border-accent bg-accent-soft' : 'border-line'}`}
         onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
         onDrop={(event) => { event.preventDefault(); setDragging(false); selectFile(event.dataTransfer.files[0]); }}
       >
         <ArrowDownToLine className="mx-auto text-ink-3" size={24} aria-hidden="true" />
         <p className="mt-2 text-[14px]">Перетащите JSON сюда или выберите файл</p>
-        <input ref={inputRef} type="file" accept=".json,application/json" className="sr-only" aria-label="Выбрать JSON-файл" onChange={(event) => selectFile(event.target.files?.[0])} />
+        <input ref={inputRef} type="file" accept=".json,application/json" className="sr-only" aria-label="Выбрать JSON-файл" onChange={(event) => { selectFile(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} />
         <button type="button" onClick={() => inputRef.current?.click()} className="mt-3 rounded-field border border-line px-4 py-2 text-[14px] font-semibold hover:bg-surface-2">Выбрать файл</button>
         {file ? <p className="mt-3 break-all text-[13px] text-ink-2">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} МБ</p> : null}
       </div>
       {validationError ? <p role="alert" className="mt-3 text-[14px] text-high-text">{validationError}</p> : null}
-      {apiError ? <div role="alert" className="mt-3 rounded-field bg-high-bg p-3 text-[14px] text-high-text"><p className="font-semibold">{apiError.message}</p>{details ? <ul className="mt-2 space-y-1 font-mono text-[12px]">{Object.entries(details).flatMap(([path, messages]) => messages.map((message, index) => <li key={`${path}-${index}`}>{path}: {message}</li>))}</ul> : null}</div> : null}
+      {apiError ? <div role="alert" className="mt-3 rounded-field bg-high-soft p-3 text-[14px] text-high-text"><p className="font-semibold">{apiError.message}</p>{details ? <ul className="mt-2 space-y-1 font-mono text-[12px]">{Object.entries(details).flatMap(([path, messages]) => messages.map((message, index) => <li key={`${path}-${index}`}>{path}: {message}</li>))}</ul> : null}</div> : null}
       {upload.error && !apiError ? <p role="alert" className="mt-3 text-[14px] text-high-text">Не удалось загрузить файл. Проверьте соединение и попробуйте снова.</p> : null}
-      {snapshot ? <div role="status" className="mt-4 rounded-tile-lg bg-low-bg p-4 text-[14px]"><strong>Снимок загружен · пакет #{snapshot.batchId}</strong><p className="mt-1 text-ink-2">Аккаунты: {snapshot.accounts} · услуги: {snapshot.services} · транзакции: {snapshot.transactions} · смен статуса: {snapshot.statusChanges}</p><p className="mt-1 text-[12px] text-ink-3">Удалено записей — аккаунтов: {snapshot.removed.accounts}, услуг: {snapshot.removed.services}, транзакций: {snapshot.removed.transactions}</p></div> : null}
+      {snapshot ? <div role="status" className="mt-4 rounded-tile-lg bg-low-soft p-4 text-[14px]"><strong>Снимок загружен · пакет #{snapshot.batchId}</strong><p className="mt-1 text-ink-2">Аккаунты: {snapshot.accounts} · услуги: {snapshot.services} · транзакции: {snapshot.transactions} · смен статуса: {snapshot.statusChanges}</p><p className="mt-1 text-[12px] text-ink-3">Удалено записей — аккаунтов: {snapshot.removed.accounts}, услуг: {snapshot.removed.services}, транзакций: {snapshot.removed.transactions}</p></div> : null}
       <button type="button" onClick={submit} disabled={!file || upload.isPending} className="mt-4 h-11 rounded-field bg-accent px-5 text-[14px] font-semibold text-accent-ink disabled:cursor-not-allowed disabled:opacity-50">
         {upload.isPending ? 'Загружаем…' : 'Загрузить снимок'}
       </button>
@@ -103,7 +103,7 @@ function SimulatorPanel() {
 
   return (
     <section className="rounded-block bg-surface p-5 sm:p-6">
-      <div className="flex items-start justify-between gap-3"><div className="flex items-start gap-3"><div className="rounded-field bg-accent/10 p-2 text-accent"><Activity aria-hidden="true" size={20} /></div><div><h2 className="font-display text-[20px] font-semibold">Симулятор</h2><p className="mt-1 text-[14px] text-ink-2">Управление временем и событиями источника.</p></div></div><button type="button" onClick={() => query.refetch()} aria-label="Обновить состояние симулятора" className="rounded-field p-2 text-ink-2 hover:bg-surface-2"><RotateCcw size={17} /></button></div>
+      <div className="flex items-start justify-between gap-3"><div className="flex items-start gap-3"><div className="rounded-field bg-accent-soft p-2 text-accent"><Activity aria-hidden="true" size={20} /></div><div><h2 className="font-display text-[20px] font-semibold">Симулятор</h2><p className="mt-1 text-[14px] text-ink-2">Управление временем и событиями источника.</p></div></div><button type="button" onClick={() => query.refetch()} aria-label="Обновить состояние симулятора" className="rounded-field p-2 text-ink-2 hover:bg-surface-2"><RotateCcw size={17} /></button></div>
       {query.isPending ? <div className="mt-5 h-24 animate-pulse rounded-tile-lg bg-surface-2" /> : query.isError && !state ? <ErrorState title="Не удалось загрузить симулятор" message={query.error.message} onRetry={() => query.refetch()} /> : state ? <>
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <InfoCell label="Состояние" value={state.running ? 'Работает' : 'Остановлен'} />
@@ -144,7 +144,7 @@ export default function Data() {
   return (
     <>
       <PageHeader title="Данные" subtitle="Загрузка снимка, симулятор и лента изменений" actions={
-        <><a href="/admin/" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-field border border-line px-3 text-[13px] font-semibold hover:bg-surface-2">Админка <ExternalLink size={14} /></a><a href="/api/v1/docs" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-field border border-line px-3 text-[13px] font-semibold hover:bg-surface-2">API docs <ExternalLink size={14} /></a><a href="/prometheus/" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-field border border-line px-3 text-[13px] font-semibold hover:bg-surface-2">Prometheus <ExternalLink size={14} /></a></>
+        <><a href="/admin/" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-field border border-line px-3 text-[13px] font-semibold hover:bg-surface-2">Админка <ExternalLink size={14} /></a><a href="/api/v1/docs" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-field border border-line px-3 text-[13px] font-semibold hover:bg-surface-2">Swagger <ExternalLink size={14} /></a><a href="/prometheus/" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-field border border-line px-3 text-[13px] font-semibold hover:bg-surface-2">Prometheus <ExternalLink size={14} /></a></>
       } />
       <div className="grid gap-5 xl:grid-cols-2"><UploadPanel /><SimulatorPanel /></div>
       <section className="mt-6 rounded-block bg-surface p-5 sm:p-6">
