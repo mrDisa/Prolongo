@@ -7,6 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(
     DJANGO_DEBUG=(bool, False),
     DJANGO_ALLOWED_HOSTS=(list, ["*"]),
+    DJANGO_CSRF_TRUSTED_ORIGINS=(list, ["http://localhost:8080", "http://127.0.0.1:8080"]),
 )
 # Local runs outside compose: pick up the repository .env (real env vars win).
 environ.Env.read_env(BASE_DIR.parent / ".env")
@@ -14,6 +15,8 @@ environ.Env.read_env(BASE_DIR.parent / ".env")
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env("DJANGO_DEBUG")
 ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
+# nginx passes Host without the port, so the browser Origin (with :8080) must be trusted explicitly.
+CSRF_TRUSTED_ORIGINS = env("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -34,6 +37,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "source.middleware.AdminRemoteUserMiddleware",
+    "source.middleware.AdminSourceMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -57,7 +62,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "prolongo_ingest.wsgi.application"
 
-DATABASES = {"default": env.db("DATABASE_URL")}
+DATABASES = {"default": {**env.db("DATABASE_URL"), "ATOMIC_REQUESTS": True}}
+
+# Admin single sign-on: the user is taken from X-Auth-User (see source.middleware).
+AUTHENTICATION_BACKENDS = ["source.auth.AdminRemoteUserBackend"]
 
 LANGUAGE_CODE = "ru-ru"
 TIME_ZONE = "UTC"
