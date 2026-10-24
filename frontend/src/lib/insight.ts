@@ -18,17 +18,7 @@ export function topLossShare(summary: Summary): { count: number; percent: number
 
 export function customerCountPhrase(count: number): string {
   const lastTwo = count % 100;
-  if (lastTwo >= 11 && lastTwo <= 14) return `${count} клиентов`;
   const last = count % 10;
-  if (last === 1) return `${count} клиента`;
-  if (last >= 2 && last <= 4) return `${count} клиента`;
+  if (last === 1 && lastTwo !== 11) return `${count} клиента`;
   return `${count} клиентов`;
-}
-
-export function formatHorizonEnd(referenceTime: string, days: number): string {
-  const date = new Date(new Date(referenceTime).getTime() + days * 24 * 60 * 60 * 1000);
-  const parts = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
-    .formatToParts(date)
-    .reduce<Record<string, string>>((result, part) => ({ ...result, [part.type]: part.value }), {});
-  return `до ${parts.day} ${parts.month.replace(/\.$/, '')} ${parts.year}`;
 }

@@ -15,7 +15,7 @@ export function TopList({ customers, horizonDays }: { customers: AtRiskCustomer[
             <span className="min-w-0">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="break-all text-[14px] font-semibold text-ink">{customer.email}</span>
-                <RiskBadge customer={customer} />
+                <RiskBadge customer={customer} showScore />
               </span>
               <span className="mt-1 block line-clamp-2 text-[13px] text-ink-2">{customer.topReasons[0]?.text ?? 'Причина не указана'}</span>
             </span>

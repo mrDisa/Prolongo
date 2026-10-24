@@ -7,7 +7,7 @@ const levels = (thresholds: { medium: number; high: number }) => [
   { key: 'high', label: 'Высокий риск', hint: `Score от ${thresholds.high} — действовать сегодня`, color: 'bg-high', text: 'text-high-text' },
   { key: 'medium', label: 'Средний риск', hint: `Score от ${thresholds.medium} — связаться`, color: 'bg-med', text: 'text-med-text' },
   { key: 'low', label: 'Низкий риск', hint: `Score ниже ${thresholds.medium} — наблюдать`, color: 'bg-low', text: 'text-low-text' },
-  { key: 'noScore', label: 'Нет оценки', hint: 'Недостаточно данных', color: 'bg-unrated', text: 'text-unrated-text' },
+  { key: 'noScore', label: 'Нет оценки', hint: 'Уровень риска не рассчитывается', color: 'bg-unrated', text: 'text-unrated-text' },
 ] as const;
 
 export function LevelBar({ customers, horizonDays, thresholds }: {

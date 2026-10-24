@@ -3,12 +3,13 @@ import { api } from '@/api/client';
 import { unwrap } from '@/api/errors';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { ForecastBars } from '@/components/ForecastBars';
 import { InsightHero } from '@/components/InsightHero';
 import { LevelBar } from '@/components/LevelBar';
 import { PageHeader } from '@/components/PageHeader';
 import { PeriodSelector } from '@/components/PeriodSelector';
 import { TopList } from '@/components/TopList';
-import { formatHorizonEnd } from '@/lib/insight';
+import { formatHorizonEnd } from '@/lib/format';
 import { useHorizon } from '@/lib/period';
 
 export default function Overview() {
@@ -19,15 +20,29 @@ export default function Overview() {
     queryFn: () => unwrap(api.GET('/api/v1/analytics/summary', {
       params: { query: requestHorizonDays === undefined ? {} : { horizonDays: requestHorizonDays } },
     })),
+    placeholderData: (previous) => previous,
   });
   const summary = summaryQuery.data;
+  const selectedHorizonDays = requestHorizonDays ?? summary?.horizonDays ?? horizonDays ?? 30;
+  const timelineQuery = useQuery({
+    queryKey: ['timeline', requestHorizonDays ?? 'model-default', selectedHorizonDays],
+    enabled: Boolean(summary),
+    queryFn: () => unwrap(api.GET('/api/v1/analytics/churn-timeline', {
+      params: { query: {
+        pastDays: selectedHorizonDays,
+        futureDays: selectedHorizonDays,
+        ...(requestHorizonDays !== undefined ? { horizonDays: requestHorizonDays } : {}),
+      } },
+    })),
+    placeholderData: (previous) => previous,
+  });
 
   return (
     <>
       <PageHeader
         title="Обзор"
-        subtitle={summary ? `Кто может уйти и сколько это стоит — прогноз на ${summary.horizonDays} дн., ${formatHorizonEnd(summary.referenceTime, summary.horizonDays)}` : 'Кто может уйти и сколько это стоит'}
-        actions={<PeriodSelector value={summary?.horizonDays ?? horizonDays ?? 30} referenceTime={summary?.referenceTime} onChange={setHorizonDays} />}
+        subtitle={summary ? `Кто может уйти и сколько это стоит — прогноз на ${summary.horizonDays} дн., ${formatHorizonEnd(summary.referenceTime, summary.horizonDays, true)}` : 'Кто может уйти и сколько это стоит'}
+        actions={<PeriodSelector value={selectedHorizonDays} referenceTime={summary?.referenceTime} onChange={setHorizonDays} />}
       />
 
       {summaryQuery.isError && !summary ? (
@@ -36,15 +51,18 @@ export default function Overview() {
         <div className="space-y-6">
           <InsightHero summary={summary} />
           <LevelBar customers={summary.customers} horizonDays={summary.horizonDays} thresholds={thresholds} />
-          <section className="rounded-block bg-surface p-6" aria-labelledby="top-list-title">
-            <div className="mb-4">
-              <h2 id="top-list-title" className="font-display text-[20px] font-semibold">Кому звонить первым</h2>
-              <p className="mt-1 text-[14px] text-ink-2">Клиенты с наибольшими ожидаемыми потерями</p>
-            </div>
-            {summary.topAtRisk.length ? <TopList customers={summary.topAtRisk} horizonDays={summary.horizonDays} /> : (
-              <EmptyState title="Нет клиентов под риском" hint="Когда появятся клиенты с оценкой, они будут показаны здесь." />
-            )}
-          </section>
+          <div className="grid items-start gap-6 xl:grid-cols-2">
+            <ForecastBars data={timelineQuery.data} isPending={timelineQuery.isPending} error={timelineQuery.error} onRetry={() => void timelineQuery.refetch()} horizonDays={selectedHorizonDays} referenceTime={summary.referenceTime} />
+            <section className="rounded-block bg-surface p-6" aria-labelledby="top-list-title">
+              <div className="mb-4">
+                <h2 id="top-list-title" className="font-display text-[20px] font-semibold">Кому звонить первым</h2>
+                <p className="mt-1 text-[14px] text-ink-2">Клиенты с наибольшими ожидаемыми потерями</p>
+              </div>
+              {summary.topAtRisk.length ? <TopList customers={summary.topAtRisk} horizonDays={summary.horizonDays} /> : (
+                <EmptyState title="Нет клиентов под риском" hint="Когда появятся клиенты с оценкой, они будут показаны здесь." />
+              )}
+            </section>
+          </div>
         </div>
       ) : summaryQuery.isPending ? (
         <OverviewSkeleton />
