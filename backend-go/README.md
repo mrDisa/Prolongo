@@ -2,18 +2,22 @@
 
 Расчёт риска и денег, API для панели, авторизация, SSE, `/metrics`, Swagger.
 
-ТЗ: [docs/ТЗ_BACKEND_GO.md](../docs/ТЗ_BACKEND_GO.md). Готово: G1 «Каркас», G2 «openapi.yml». Следующая задача — G3 «Миграции core + авторизация».
+ТЗ: [docs/ТЗ_BACKEND_GO.md](../docs/ТЗ_BACKEND_GO.md). Готово: G1 «Каркас», G2 «openapi.yml», G3 «Миграции core + авторизация». Следующая задача — G4 «Чтение данных».
 
 ## Локальный запуск
 
-Нужен Go 1.26 или новее. Переменные — в [ТЗ §4](../docs/ТЗ_BACKEND_GO.md); без `DATABASE_URL` сервис не стартует. В G1 к базе он ещё не подключается, поэтому подойдёт любое значение:
+Нужны Go 1.26+ и PostgreSQL, в которой Django уже создал свои таблицы: при старте core ждёт `public.services` до 60 с, затем сам накатывает миграции схемы `core` и создаёт пользователя `ADMIN_USERNAME` (переменные — [ТЗ §4](../docs/ТЗ_BACKEND_GO.md)). Проще всего взять базу из [ingest-django/README.md](../ingest-django/README.md): после `manage.py migrate` она готова.
 
 ```bash
 DATABASE_URL=postgres://prolongo:prolongo@127.0.0.1:5433/prolongo go run ./cmd/core
 ```
 
 ```bash
-curl -i http://127.0.0.1:8000/healthz
+curl -i -c /tmp/prolongo.cookie -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin123"}' http://127.0.0.1:8000/api/v1/auth/login
+```
+
+```bash
+curl -i -b /tmp/prolongo.cookie http://127.0.0.1:8000/api/v1/auth/me
 ```
 
 Swagger UI — http://127.0.0.1:8000/api/v1/docs, спецификация — http://127.0.0.1:8000/api/v1/openapi.yml.
@@ -37,6 +41,18 @@ make lint-openapi
 ```bash
 go test -race ./...
 ```
+
+Тесты базы и хранилища (`internal/db`, `internal/store`) идут на настоящей PostgreSQL и без `TEST_DATABASE_URL` пропускаются. Отдельная одноразовая база:
+
+```bash
+docker run -d --name prolongo-test-pg -e POSTGRES_DB=prolongo_test -e POSTGRES_USER=prolongo -e POSTGRES_PASSWORD=prolongo -p 127.0.0.1:5434:5432 postgres:16-alpine
+```
+
+```bash
+TEST_DATABASE_URL='postgres://prolongo:prolongo@127.0.0.1:5434/prolongo_test?sslmode=disable' go test -race ./...
+```
+
+В CI (`.github/workflows/backend-go.yml`) то же самое запускается на каждом PR вместе с `gofmt` и `go vet`.
 
 ## Docker
 
