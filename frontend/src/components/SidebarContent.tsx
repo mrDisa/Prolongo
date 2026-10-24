@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Logo } from './Logo';
 import { LiveDot } from './LiveDot';
 import { ThemeToggle } from './ThemeToggle';
+import { useLiveUpdates } from '@/live/useLiveUpdates';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Обзор', Icon: LayoutDashboard, end: true },
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
 /** Sidebar body, shared by the fixed desktop sidebar and the mobile menu. */
 export function SidebarContent() {
   const { data } = useMe();
+  const { status } = useLiveUpdates();
   const logout = useLogout();
   const user = data?.user;
   const initial = (user?.displayName ?? user?.username ?? '?').charAt(0).toUpperCase();
@@ -47,7 +49,7 @@ export function SidebarContent() {
       </nav>
 
       <div className="mt-auto flex flex-col gap-4">
-        <LiveDot />
+        <LiveDot status={status} />
         <ThemeToggle />
         <div className="flex items-center gap-3 rounded-tile bg-surface-2 p-3">
           <div

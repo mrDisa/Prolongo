@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import type { components } from '@/api/schema';
 import { formatEUR } from '@/lib/format';
 import { customerCountPhrase, topLossShare } from '@/lib/insight';
+import { useLiveUpdates } from '@/live/useLiveUpdates';
 
 type Summary = components['schemas']['Summary'];
 
 export function InsightHero({ summary }: { summary: Summary }) {
+  const { recentlyUpdated } = useLiveUpdates();
   const first = summary.topAtRisk[0];
   const { expectedLossCents, worstCaseLossCents, mrrAtRiskCents, totalMrrCents } = summary.money;
   const scoredCustomers = summary.customers.total - summary.customers.noScore;
@@ -20,7 +22,7 @@ export function InsightHero({ summary }: { summary: Summary }) {
     <section className="grid gap-7 rounded-hero bg-surface p-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:p-8" aria-label="Ожидаемые потери и главная рекомендация">
       <div className="min-w-0">
         <p className="inline-flex rounded-full bg-accent-soft px-3 py-1 text-[13px] font-semibold text-accent-text">Ожидаемые потери · {summary.horizonDays} дн.</p>
-        <p className="mt-4 font-display text-[clamp(38px,6vw,58px)] font-semibold leading-tight tracking-[-0.04em]">{formatEUR(expectedLossCents)}</p>
+        <p className={`mt-4 inline-block rounded px-1 font-display text-[clamp(38px,6vw,58px)] font-semibold leading-tight tracking-[-0.04em] transition-colors duration-300 ${recentlyUpdated ? 'bg-accent-soft' : 'bg-transparent'}`}>{formatEUR(expectedLossCents)}</p>
         <p className="mt-3 max-w-3xl text-[15px] leading-6 text-ink-2">{insight}</p>
         <div className="mt-5 flex flex-wrap gap-3">
           {first ? (
@@ -41,10 +43,11 @@ export function InsightHero({ summary }: { summary: Summary }) {
 }
 
 function Metric({ label, value, hint, icon = false }: { label: string; value: string; hint: string; icon?: boolean }) {
+  const { recentlyUpdated } = useLiveUpdates();
   return (
     <div className="rounded-tile-lg bg-surface-2 p-4">
       <p className="flex items-center gap-2 text-[13px] font-medium text-ink-2">{icon ? <Users size={15} aria-hidden="true" /> : null}{label}</p>
-      <p className="mt-2 font-display text-[22px] font-semibold">{value}</p>
+      <p className={`mt-2 inline-block rounded px-1 font-display text-[22px] font-semibold transition-colors duration-300 ${recentlyUpdated ? 'bg-accent-soft' : 'bg-transparent'}`}>{value}</p>
       <p className="mt-1 text-[12px] text-ink-3">{hint}</p>
     </div>
   );

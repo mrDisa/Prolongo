@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { components } from '@/api/schema';
+import { useLiveUpdates } from '@/live/useLiveUpdates';
 
 type CustomerCounts = components['schemas']['Summary']['customers'];
 
@@ -15,6 +16,7 @@ export function LevelBar({ customers, horizonDays, thresholds }: {
   horizonDays: number;
   thresholds: { medium: number; high: number };
 }) {
+  const { recentlyUpdated } = useLiveUpdates();
   const total = customers.total;
   const levelItems = levels(thresholds);
   return (
@@ -30,7 +32,7 @@ export function LevelBar({ customers, horizonDays, thresholds }: {
         {levelItems.map(({ key, label, hint, color, text }) => (
           <Link key={key} to={`/customers?level=${key === 'noScore' ? 'none' : key}&h=${horizonDays}`} className="rounded-tile-lg border border-line bg-surface p-4 transition-colors hover:bg-surface-2">
             <p className={`flex items-center gap-2 text-[13px] font-semibold ${text}`}><span className={`h-2.5 w-2.5 rounded-full ${color}`} aria-hidden="true" />{label}</p>
-            <p className="mt-2 font-display text-[28px] font-semibold">{customers[key]}</p>
+            <p className={`mt-2 inline-block rounded px-1 font-display text-[28px] font-semibold transition-colors duration-300 ${recentlyUpdated ? 'bg-accent-soft' : 'bg-transparent'}`}>{customers[key]}</p>
             <p className="mt-1 text-[12px] text-ink-3">{hint}</p>
           </Link>
         ))}
