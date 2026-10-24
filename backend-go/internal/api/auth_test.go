@@ -15,6 +15,9 @@ var protectedRoutes = []struct{ method, path string }{
 	{http.MethodGet, "/api/v1/model/settings"},
 	{http.MethodPatch, "/api/v1/model/settings"},
 	{http.MethodPost, "/api/v1/model/settings/reset"},
+	{http.MethodGet, "/api/v1/customers"},
+	{http.MethodGet, "/api/v1/customers/5"},
+	{http.MethodGet, "/api/v1/analytics/summary"},
 }
 
 func TestLoginSetsSessionCookie(t *testing.T) {
