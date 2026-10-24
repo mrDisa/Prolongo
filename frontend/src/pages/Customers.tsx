@@ -1,24 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowDownUp, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '@/api/client';
 import { unwrap } from '@/api/errors';
 import { ErrorState } from '@/components/ErrorState';
+import { FilterChips } from '@/components/FilterChips';
 import { PageHeader } from '@/components/PageHeader';
+import { RiskBadge } from '@/components/RiskBadge';
+import { ScoreBar } from '@/components/ScoreBar';
+import { SortableHeader, type SortKey } from '@/components/SortableHeader';
+import { isRiskLevel, RISK_LEVELS, type Customer, type RiskLevel } from '@/lib/levels';
 import { formatEUR } from '@/lib/format';
-import type { components } from '@/api/schema';
-
-type Customer = components['schemas']['CustomerListItem'];
-type SortKey = 'id' | 'email' | 'balance' | 'totalReplenished' | 'riskScore' | 'expectedLoss';
-type RiskLevel = 'high' | 'medium' | 'low' | 'none';
-
-const LEVELS: { value: RiskLevel; label: string }[] = [
-  { value: 'high', label: 'Высокий' },
-  { value: 'medium', label: 'Средний' },
-  { value: 'low', label: 'Низкий' },
-  { value: 'none', label: 'Нет оценки' },
-];
 const SORTABLE: { key: SortKey; label: string }[] = [
   { key: 'id', label: 'ID' },
   { key: 'email', label: 'Email' },
@@ -27,88 +20,21 @@ const SORTABLE: { key: SortKey; label: string }[] = [
   { key: 'riskScore', label: 'Risk-score' },
   { key: 'expectedLoss', label: 'Ожид. потери' },
 ];
-const LEVEL_STYLES: Record<Exclude<RiskLevel, 'none'>, { badge: string; dot: string }> = {
-  high: { badge: 'bg-high-soft text-high-text', dot: 'bg-high' },
-  medium: { badge: 'bg-med-soft text-med-text', dot: 'bg-med' },
-  low: { badge: 'bg-low-soft text-low-text', dot: 'bg-low' },
-};
-
 function positiveInt(value: string | null, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function isRiskLevel(value: string | null): value is RiskLevel {
-  return value === 'high' || value === 'medium' || value === 'low' || value === 'none';
-}
-
-function levelLabel(customer: Customer): string {
-  if (customer.scoreStatus === 'no_score') return 'Нет оценки';
-  if (customer.riskLevel === 'high') return 'Высокий';
-  if (customer.riskLevel === 'medium') return 'Средний';
-  return 'Низкий';
-}
-
 function mainReason(customer: Customer): string {
   if (customer.scoreStatus === 'no_score') {
-    return customer.noScoreReason === 'blocked'
-      ? 'Все услуги заблокированы'
-      : 'Клиент уже ушёл — все услуги удалены';
+    switch (customer.noScoreReason) {
+      case 'no_services': return 'Нет данных об услугах';
+      case 'blocked': return 'Все услуги заблокированы';
+      case 'churned': return 'Клиент уже ушёл';
+      default: return 'Нет оценки';
+    }
   }
   return customer.topReasons[0]?.text ?? 'Причин для беспокойства нет';
-}
-
-function SortHeader({
-  column,
-  label,
-  active,
-  order,
-  onSort,
-}: {
-  column: (typeof SORTABLE)[number];
-  label: string;
-  active: boolean;
-  order: 'asc' | 'desc';
-  onSort: (key: SortKey) => void;
-}) {
-  const ariaSort = active ? (order === 'asc' ? 'ascending' : 'descending') : 'none';
-  const Icon = active ? (order === 'asc' ? ArrowUp : ArrowDown) : ArrowDownUp;
-  return (
-    <th scope="col" aria-sort={ariaSort} className="px-4 py-3 text-left font-medium">
-      <button
-        type="button"
-        onClick={() => onSort(column.key)}
-        className={`inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-left font-semibold transition-colors hover:bg-surface-2 ${active ? 'bg-accent-soft text-accent-text' : 'text-ink-2'}`}
-      >
-        {label}
-        <Icon size={15} strokeWidth={2} aria-hidden="true" />
-      </button>
-    </th>
-  );
-}
-
-function RiskBadge({ customer }: { customer: Customer }) {
-  const isUnrated = customer.scoreStatus === 'no_score';
-  const colors = isUnrated ? { badge: 'bg-unrated-soft text-unrated-text', dot: 'bg-unrated' } : LEVEL_STYLES[customer.riskLevel ?? 'low'];
-  return (
-    <span className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-1 text-[13px] font-semibold leading-[18px] ${colors.badge}`}>
-      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${colors.dot}`} />
-      {levelLabel(customer)}
-    </span>
-  );
-}
-
-function ScoreBar({ customer }: { customer: Customer }) {
-  if (customer.riskScore === null) return <span className="font-display text-[16px] text-ink-3">—</span>;
-  const color = customer.riskLevel === 'high' ? 'bg-high' : customer.riskLevel === 'medium' ? 'bg-med' : 'bg-low';
-  return (
-    <div className="flex min-w-[112px] items-center gap-3">
-      <span className="w-7 text-right font-display text-[16px] font-semibold">{customer.riskScore}</span>
-      <span className="h-2 w-[72px] overflow-hidden rounded-full bg-track" aria-hidden="true">
-        <span className={`block h-full rounded-full ${color}`} style={{ width: `${customer.riskScore}%` }} />
-      </span>
-    </div>
-  );
 }
 
 export default function Customers() {
@@ -157,7 +83,7 @@ export default function Customers() {
     placeholderData: (previous) => previous,
   });
   const countQueries = useQueries({
-    queries: [null, ...LEVELS.map(({ value }) => value)].map((level) => ({
+    queries: [null, ...RISK_LEVELS.map(({ value }) => value)].map((level) => ({
       queryKey: ['customers-count', level, urlSearch, horizonDays],
       queryFn: () => unwrap(api.GET('/api/v1/customers', {
         params: { query: { page: 1, pageSize: 1, horizonDays, ...(level ? { level } : {}), ...(urlSearch ? { search: urlSearch } : {}) } },
@@ -191,10 +117,6 @@ export default function Customers() {
   const firstResult = response?.total ? (response.page - 1) * response.pageSize + 1 : 0;
   const lastResult = response ? Math.min(response.page * response.pageSize, response.total) : 0;
 
-  if (customersQuery.isError) {
-    return <ErrorState message={customersQuery.error instanceof Error ? customersQuery.error.message : undefined} onRetry={() => customersQuery.refetch()} />;
-  }
-
   return (
     <>
       <PageHeader
@@ -215,38 +137,21 @@ export default function Customers() {
         }
       />
 
-      <section aria-label="Фильтр по уровню риска" className="mb-5 flex flex-wrap gap-2">
-        <button
-          type="button"
-          aria-pressed={selectedLevels.length === 0}
-          onClick={() => selectLevel('all')}
-          className={`h-10 rounded-full border px-4 text-[14px] font-semibold transition-colors ${selectedLevels.length === 0 ? 'border-accent bg-accent-soft text-accent-text' : 'border-line bg-surface text-ink-2 hover:bg-surface-2'}`}
-        >
-          Все <span className="ml-1 opacity-75">· {countQueries[0]?.data?.total ?? '—'}</span>
-        </button>
-        {LEVELS.map(({ value, label }, index) => {
-          const active = selectedLevels.includes(value);
-          return (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={active}
-              onClick={() => selectLevel(value)}
-              className={`h-10 rounded-full border px-4 text-[14px] font-semibold transition-colors ${active ? 'border-accent bg-accent-soft text-accent-text' : 'border-line bg-surface text-ink-2 hover:bg-surface-2'}`}
-            >
-              {label} <span className="ml-1 opacity-75">· {countQueries[index + 1]?.data?.total ?? '—'}</span>
-            </button>
-          );
-        })}
-      </section>
+      <FilterChips
+        selectedLevels={selectedLevels}
+        counts={countQueries.map((result) => result.data?.total)}
+        onSelect={selectLevel}
+      />
 
-      <section className="overflow-hidden rounded-block bg-surface" aria-label="Рейтинг клиентов">
+      {customersQuery.isError ? (
+        <ErrorState message={customersQuery.error instanceof Error ? customersQuery.error.message : undefined} onRetry={() => customersQuery.refetch()} />
+      ) : <section className="overflow-hidden rounded-block bg-surface" aria-label="Рейтинг клиентов">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] border-collapse text-[14px]">
-            <thead className="border-b border-line bg-surface-2/60 text-ink-2">
+            <thead className="border-b border-line bg-surface-2 text-ink-2">
               <tr>
                 {SORTABLE.map((column) => (
-                  <SortHeader
+                  <SortableHeader
                     key={column.key}
                     column={column}
                     label={column.key === 'expectedLoss' ? `${column.label} · ${horizonDays} дн.` : column.label}
@@ -267,7 +172,7 @@ export default function Customers() {
                   </tr>
                 ))
               ) : response?.items.length ? response.items.map((customer) => (
-                <tr key={customer.id} className="transition-colors hover:bg-surface-2/50">
+                <tr key={customer.id} className="transition-colors hover:bg-surface-2">
                   <td className="whitespace-nowrap px-6 py-[18px] font-mono text-[13px] text-ink-2">{customer.id}</td>
                   <td className="whitespace-nowrap px-4 py-[18px]">
                     <Link to={`/customers/${customer.id}`} className="font-semibold text-accent-text hover:underline">{customer.email}</Link>
@@ -330,7 +235,7 @@ export default function Customers() {
             ><ChevronRight size={18} aria-hidden="true" /></button>
           </div>
         </footer>
-      </section>
+      </section>}
     </>
   );
 }
