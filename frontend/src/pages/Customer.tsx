@@ -93,6 +93,7 @@ function ServiceTable({ services }: { services: Service[] }) {
   if (!services.length) return <p className="mt-4 text-[14px] text-ink-2">Услуг нет.</p>;
   return (
     <div className="mt-4 overflow-x-auto">
+      <p className="mb-2 text-[12px] text-ink-3 sm:hidden">Таблицу можно прокручивать по горизонтали.</p>
       <table className="w-full min-w-[620px] text-left text-[14px]">
         <thead className="border-b border-line text-[12px] font-medium text-ink-3">
           <tr><th className="px-3 py-3">Услуга</th><th className="px-3 py-3">Статус</th><th className="px-3 py-3">Цена / период</th><th className="px-3 py-3">Оплачена до</th><th className="px-3 py-3">Автопродление</th></tr>

@@ -104,7 +104,7 @@ function SimulatorPanel() {
   return (
     <section className="rounded-block bg-surface p-5 sm:p-6">
       <div className="flex items-start justify-between gap-3"><div className="flex items-start gap-3"><div className="rounded-field bg-accent-soft p-2 text-accent"><Activity aria-hidden="true" size={20} /></div><div><h2 className="font-display text-[20px] font-semibold">Симулятор</h2><p className="mt-1 text-[14px] text-ink-2">Управление временем и событиями источника.</p></div></div><button type="button" onClick={() => query.refetch()} aria-label="Обновить состояние симулятора" className="rounded-field p-2 text-ink-2 hover:bg-surface-2"><RotateCcw size={17} /></button></div>
-      {query.isPending ? <div className="mt-5 h-24 animate-pulse rounded-tile-lg bg-surface-2" /> : query.isError && !state ? <ErrorState title="Не удалось загрузить симулятор" message={query.error.message} onRetry={() => query.refetch()} /> : state ? <>
+      {query.isPending ? <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Загрузка симулятора" role="status">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-[68px] animate-pulse rounded-field bg-surface-2" />)}<span className="sr-only">Загружаем состояние симулятора</span></div> : query.isError && !state ? <ErrorState title="Не удалось загрузить симулятор" message={query.error.message} onRetry={() => query.refetch()} /> : state ? <>
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <InfoCell label="Состояние" value={state.running ? 'Работает' : 'Остановлен'} />
           <InfoCell label="Время источника" value={dateLabel(state.dataTime)} />

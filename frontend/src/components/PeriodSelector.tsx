@@ -55,6 +55,7 @@ export function PeriodSelector({ value, referenceTime, onChange }: {
       <button
         ref={triggerRef}
         type="button"
+        aria-label="Свой период"
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => {
@@ -73,7 +74,7 @@ export function PeriodSelector({ value, referenceTime, onChange }: {
             max={365}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            className="mt-2 h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-ink outline-none focus:border-accent"
+            className="mt-2 h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-ink focus:border-accent"
           />
           <p className="mt-1 min-h-5 text-[13px] text-ink-2">{valid ? `Прогноз ${formatHorizonEnd(referenceTime ?? new Date().toISOString(), days)}` : 'Введите число от 1 до 365'}</p>
           <div className="mt-3 flex flex-wrap gap-2" aria-label="Быстрый выбор периода">
