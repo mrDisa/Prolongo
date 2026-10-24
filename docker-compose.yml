@@ -47,10 +47,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports: ["8080:8080"]
-    # nginx resolves every upstream at startup, prometheus included
-    depends_on:
-      core: { condition: service_healthy }
-      prometheus: { condition: service_started }
+    depends_on: { core: { condition: service_healthy } }
 
   prometheus:
     image: prom/prometheus:v2.54.1
