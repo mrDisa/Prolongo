@@ -20,13 +20,14 @@ type MemStore struct {
 	mu       sync.Mutex
 	nextID   int64
 	users    map[string]store.User // by username
+	subjects map[string]string     // OIDC subject → username
 	sessions map[string]session    // by string(tokenHash)
 	Now      func() time.Time      // clock for expiry checks; time.Now by default
 }
 
 // NewMemStore returns an empty store.
 func NewMemStore() *MemStore {
-	return &MemStore{users: map[string]store.User{}, sessions: map[string]session{}, Now: time.Now}
+	return &MemStore{users: map[string]store.User{}, subjects: map[string]string{}, sessions: map[string]session{}, Now: time.Now}
 }
 
 func (m *MemStore) UpsertPasswordUser(_ context.Context, username, displayName, hash string) (store.User, error) {
@@ -39,6 +40,26 @@ func (m *MemStore) UpsertPasswordUser(_ context.Context, username, displayName, 
 	}
 	u.DisplayName, u.PasswordHash = displayName, hash
 	m.users[username] = u
+	return u, nil
+}
+
+// UpsertOIDCUser behaves like the PostgreSQL store: match by subject, suffix on a taken username.
+func (m *MemStore) UpsertOIDCUser(_ context.Context, subject, username, displayName string) (store.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if name, ok := m.subjects[subject]; ok {
+		u := m.users[name]
+		u.DisplayName = displayName
+		m.users[name] = u
+		return u, nil
+	}
+	if _, taken := m.users[username]; taken {
+		username += "-" + subject[:min(8, len(subject))]
+	}
+	m.nextID++
+	u := store.User{ID: m.nextID, Username: username, DisplayName: displayName}
+	m.users[username] = u
+	m.subjects[subject] = username
 	return u, nil
 }
 
