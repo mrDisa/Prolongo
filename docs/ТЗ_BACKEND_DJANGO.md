@@ -437,8 +437,9 @@ server {
     proxy_set_header Cookie $http_cookie;
   }
 
-  # публичные: вход и OIDC
-  location = /api/v1/auth/login { proxy_pass http://core:8000; }
+  # публичные: вход, способы входа и OIDC
+  location = /api/v1/auth/login  { proxy_pass http://core:8000; }
+  location = /api/v1/auth/config { proxy_pass http://core:8000; }
   location /api/v1/auth/oidc/   { proxy_pass http://core:8000; }
 
   # ingest
