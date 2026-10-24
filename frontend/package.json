@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "predev": "npm run gen:api",
     "build": "tsc --noEmit && vite build",
+    "prebuild": "npm run gen:api",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "pretypecheck": "npm run gen:api",
     "gen:api": "openapi-typescript ../openapi.yml -o src/api/schema.d.ts",
     "mock": "npx @stoplight/prism-cli mock ../openapi.yml -p 4010"
   },
@@ -15,14 +18,18 @@
     "@fontsource/jetbrains-mono": "^5.1.0",
     "@fontsource/onest": "^5.1.0",
     "@fontsource/unbounded": "^5.1.0",
+    "@hookform/resolvers": "^3.9.1",
     "@tanstack/react-query": "^5.59.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.454.0",
+    "openapi-fetch": "^0.13.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hook-form": "^7.53.0",
     "react-router-dom": "^6.27.0",
-    "tailwind-merge": "^2.5.4"
+    "tailwind-merge": "^2.5.4",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
