@@ -18,6 +18,7 @@ import (
 	"github.com/mrDisa/Prolongo/backend-go/internal/auth"
 	"github.com/mrDisa/Prolongo/backend-go/internal/config"
 	"github.com/mrDisa/Prolongo/backend-go/internal/db"
+	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 	"github.com/mrDisa/Prolongo/backend-go/internal/store"
 )
 
@@ -56,7 +57,7 @@ const (
 )
 
 // run prepares the database and serves HTTP until ctx is cancelled.
-// Order: PostgreSQL → Django's source schema → core migrations → source data → admin user → HTTP.
+// Order: PostgreSQL → Django's source schema → core migrations → source data → model settings → admin user → HTTP.
 func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	connectCtx, cancel := context.WithTimeout(ctx, dbConnectTimeout)
 	pool, err := db.Open(connectCtx, cfg.DatabaseURL, logger)
@@ -84,6 +85,13 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		slog.Int("accounts", accounts), slog.Int("services", services), slog.Int("transactions", transactions),
 		slog.Time("latest_timestamp", ds.LatestTimestamp), slog.Any("source_time", ds.SourceTime))
 
+	settingsSvc := settings.NewService(st)
+	current, err := settingsSvc.Ensure(ctx)
+	if err != nil {
+		return err
+	}
+	logger.Info("model settings ready", slog.Int64("version", current.Version), slog.Int("horizon_days", current.HorizonDays))
+
 	authSvc, err := auth.NewService(st, time.Duration(cfg.SessionTTLHours)*time.Hour)
 	if err != nil {
 		return err
@@ -97,6 +105,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	handler := api.NewRouter(api.Deps{
 		Logger:      logger,
 		Auth:        authSvc,
+		Settings:    settingsSvc,
 		Cookie:      api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
 		OIDCEnabled: cfg.OIDC.Enabled,
 	})
