@@ -457,10 +457,18 @@ Swagger и openapi.yml тоже за авторизацией на уровне 
 
 Собственный `prometheus.Collector`, который в `Collect` читает `worker.Current()` — так значения всегда совпадают с API. Имена — `ОБЩЕЕ_ТЗ.md` §7.11. Евро в метриках — `float64(cents) / 100`. Плюс стандартные `go_*` и `process_*`.
 
+- Снимок читается один раз за опрос: все числа одного ответа — из одного расчёта.
+- До первого расчёта метрик модели нет (нули выглядели бы как настоящие данные).
+- `prolongo_services{status}` и `prolongo_recalc_duration_seconds{reason}` отдаются для всех статусов и причин, даже с нулём: серия не появляется и не пропадает.
+- `prolongo_recalc_duration_seconds` — гистограмма: ей нужен каждый расчёт, поэтому её заполняет хук `worker.OnPublish`.
+- `prolongo_model_feature_weight` — действующий вес; у выключенного признака 0.
+- Доступ: `Authorization: Bearer <METRICS_TOKEN>` (сравнение за постоянное время) или сессия. Неверный токен → 401 даже при живой сессии. Пустой `METRICS_TOKEN` выключает доступ по токену.
+- Успешные опросы пишутся в журнал на уровне debug, как `/healthz`.
+
 Пример ответа:
 
 ```
-# HELP prolongo_customers Customers by risk level
+# HELP prolongo_customers Customers by risk level (none: no score)
 # TYPE prolongo_customers gauge
 prolongo_customers{level="high"} 2
 prolongo_customers{level="medium"} 2
@@ -468,7 +476,7 @@ prolongo_customers{level="low"} 2
 prolongo_customers{level="none"} 4
 # HELP prolongo_expected_loss_eur Expected loss over the horizon, EUR
 # TYPE prolongo_expected_loss_eur gauge
-prolongo_expected_loss_eur 123.45
+prolongo_expected_loss_eur 7032.67
 ```
 
 ## 15. Swagger и openapi.yml
