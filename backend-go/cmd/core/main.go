@@ -20,6 +20,7 @@ import (
 	"github.com/mrDisa/Prolongo/backend-go/internal/db"
 	"github.com/mrDisa/Prolongo/backend-go/internal/live"
 	"github.com/mrDisa/Prolongo/backend-go/internal/metrics"
+	"github.com/mrDisa/Prolongo/backend-go/internal/oidc"
 	"github.com/mrDisa/Prolongo/backend-go/internal/recalc"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 	"github.com/mrDisa/Prolongo/backend-go/internal/store"
@@ -129,21 +130,34 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	handler := api.NewRouter(api.Deps{
-		Logger:      logger,
-		Auth:        authSvc,
-		Settings:    settingsSvc,
-		Recalc:      worker,
-		Current:     worker,
-		History:     st,
-		Timeline:    st,
-		Hub:         hub,
-		Cookie:      api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
-		OIDCEnabled: cfg.OIDC.Enabled,
+		Logger:   logger,
+		Auth:     authSvc,
+		Settings: settingsSvc,
+		Recalc:   worker,
+		Current:  worker,
+		History:  st,
+		Timeline: st,
+		Hub:      hub,
+		Cookie:   api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
+		OIDC:     oidcProvider(cfg.OIDC, logger),
 
 		Metrics:      metrics.Handler(collector),
 		MetricsToken: cfg.MetricsToken,
 	})
 	return serve(ctx, cfg.HTTPAddr, handler, logger, hub.Close)
+}
+
+// oidcProvider is the SSO provider, or nil when OIDC_ENABLED=0. It does not contact Keycloak
+// yet: discovery happens at the first sign-in and is retried, so core starts without it.
+func oidcProvider(c config.OIDC, logger *slog.Logger) api.OIDCProvider {
+	if !c.Enabled {
+		return nil
+	}
+	logger.Info("single sign-on enabled", slog.String("issuer", c.IssuerURL), slog.String("internal_url", c.InternalURL))
+	return oidc.New(oidc.Config{
+		IssuerURL: c.IssuerURL, InternalURL: c.InternalURL,
+		ClientID: c.ClientID, ClientSecret: c.ClientSecret, RedirectURL: c.RedirectURL,
+	})
 }
 
 // riskDaily turns a calculation into the day's row of core.risk_daily (day = model "now").

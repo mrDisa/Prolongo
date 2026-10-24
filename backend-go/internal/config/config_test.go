@@ -40,12 +40,19 @@ func TestOverrides(t *testing.T) {
 		"COOKIE_SECURE": "true",
 		"OIDC_ENABLED":  "1",
 		"LOG_LEVEL":     "DEBUG",
+
+		"OIDC_ISSUER_URL":    "http://localhost:8081/realms/prolongo",
+		"OIDC_INTERNAL_URL":  "http://keycloak:8081/realms/prolongo",
+		"OIDC_CLIENT_ID":     "prolongo",
+		"OIDC_CLIENT_SECRET": "secret",
+		"OIDC_REDIRECT_URL":  "http://localhost:8080/api/v1/auth/oidc/callback",
 	})
 	require.NoError(t, err)
 
 	assert.Equal(t, ":9000", cfg.HTTPAddr)
 	assert.True(t, cfg.CookieSecure)
 	assert.True(t, cfg.OIDC.Enabled)
+	assert.Equal(t, "http://keycloak:8081/realms/prolongo", cfg.OIDC.InternalURL)
 	lvl, _ := cfg.SlogLevel()
 	assert.Equal(t, slog.LevelDebug, lvl)
 }
@@ -71,4 +78,13 @@ func TestBadValues(t *testing.T) {
 
 	_, err = load(t, map[string]string{"DATABASE_URL": "x", "RECALC_DEBOUNCE_MS": "-5"})
 	assert.ErrorContains(t, err, "RECALC_DEBOUNCE_MS")
+}
+
+// OIDC_ENABLED=1 with half a setup fails at startup, not at the first login.
+func TestOIDCNeedsSettings(t *testing.T) {
+	_, err := load(t, map[string]string{"DATABASE_URL": "x", "OIDC_ENABLED": "1", "OIDC_CLIENT_ID": "prolongo"})
+	assert.EqualError(t, err, "config: OIDC_ENABLED=1 needs OIDC_ISSUER_URL, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URL")
+
+	_, err = load(t, map[string]string{"DATABASE_URL": "x", "OIDC_ENABLED": "0"})
+	assert.NoError(t, err, "switched off: nothing is required")
 }

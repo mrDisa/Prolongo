@@ -36,7 +36,8 @@ type Config struct {
 // OIDC is the optional single sign-on setup (bonus task G12).
 type OIDC struct {
 	Enabled      bool   `env:"OIDC_ENABLED" envDefault:"false"`
-	IssuerURL    string `env:"OIDC_ISSUER_URL"`
+	IssuerURL    string `env:"OIDC_ISSUER_URL"`   // what the browser sees and the tokens carry as iss
+	InternalURL  string `env:"OIDC_INTERNAL_URL"` // how core reaches the provider; empty → IssuerURL
 	ClientID     string `env:"OIDC_CLIENT_ID"`
 	ClientSecret string `env:"OIDC_CLIENT_SECRET"`
 	RedirectURL  string `env:"OIDC_REDIRECT_URL"`
@@ -60,6 +61,20 @@ func parse(opts env.Options) (Config, error) {
 	}
 	if cfg.RecalcDebounceMS < 0 {
 		return Config{}, fmt.Errorf("config: RECALC_DEBOUNCE_MS must not be negative, got %d", cfg.RecalcDebounceMS)
+	}
+	if cfg.OIDC.Enabled {
+		var missing []string
+		for _, v := range []struct{ name, value string }{
+			{"OIDC_ISSUER_URL", cfg.OIDC.IssuerURL}, {"OIDC_CLIENT_ID", cfg.OIDC.ClientID},
+			{"OIDC_CLIENT_SECRET", cfg.OIDC.ClientSecret}, {"OIDC_REDIRECT_URL", cfg.OIDC.RedirectURL},
+		} {
+			if v.value == "" {
+				missing = append(missing, v.name)
+			}
+		}
+		if len(missing) > 0 {
+			return Config{}, fmt.Errorf("config: OIDC_ENABLED=1 needs %s", strings.Join(missing, ", "))
+		}
 	}
 	return cfg, nil
 }

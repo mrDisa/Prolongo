@@ -1,4 +1,4 @@
-// Package auth implements password login and server-side sessions.
+// Package auth implements password and OIDC login and server-side sessions.
 // It knows nothing about HTTP: cookies and status codes live in internal/api.
 package auth
 
@@ -33,6 +33,7 @@ var (
 type Store interface {
 	UpsertPasswordUser(ctx context.Context, username, displayName, passwordHash string) (store.User, error)
 	UserByUsername(ctx context.Context, username string) (store.User, error)
+	UpsertOIDCUser(ctx context.Context, subject, username, displayName string) (store.User, error)
 	CreateSession(ctx context.Context, tokenHash []byte, userID int64, authMethod string, expiresAt time.Time) error
 	SessionUser(ctx context.Context, tokenHash []byte) (store.User, string, error)
 	DeleteSession(ctx context.Context, tokenHash []byte) error
@@ -98,12 +99,37 @@ func (s *Service) Login(ctx context.Context, username, password string) (User, S
 		return User{}, Session{}, ErrInvalidCredentials
 	}
 
-	token, hash := newToken()
-	expires := s.now().Add(s.ttl)
-	if err := s.store.CreateSession(ctx, hash, u.ID, MethodPassword, expires); err != nil {
+	sess, err := s.openSession(ctx, u.ID, MethodPassword)
+	if err != nil {
 		return User{}, Session{}, fmt.Errorf("auth: login: %w", err)
 	}
-	return toUser(u, MethodPassword), Session{Token: token, ExpiresAt: expires}, nil
+	return toUser(u, MethodPassword), sess, nil
+}
+
+// LoginOIDC opens a session for a person the OIDC provider has vouched for (internal/oidc),
+// creating the user on the first sign-in. The user has no password: only SSO lets them in.
+func (s *Service) LoginOIDC(ctx context.Context, subject, username, displayName string) (User, Session, error) {
+	if subject == "" {
+		return User{}, Session{}, errors.New("auth: oidc login without subject")
+	}
+	u, err := s.store.UpsertOIDCUser(ctx, subject, username, displayName)
+	if err != nil {
+		return User{}, Session{}, fmt.Errorf("auth: oidc login: %w", err)
+	}
+	sess, err := s.openSession(ctx, u.ID, MethodOIDC)
+	if err != nil {
+		return User{}, Session{}, fmt.Errorf("auth: oidc login: %w", err)
+	}
+	return toUser(u, MethodOIDC), sess, nil
+}
+
+func (s *Service) openSession(ctx context.Context, userID int64, method string) (Session, error) {
+	token, hash := newToken()
+	expires := s.now().Add(s.ttl)
+	if err := s.store.CreateSession(ctx, hash, userID, method, expires); err != nil {
+		return Session{}, err
+	}
+	return Session{Token: token, ExpiresAt: expires}, nil
 }
 
 // Authenticate returns the user of a session token, or ErrNoSession.

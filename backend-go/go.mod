@@ -4,13 +4,16 @@ go 1.26.0
 
 require (
 	github.com/caarlos0/env/v11 v11.4.1
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-chi/chi/v5 v5.5.0
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/stretchr/testify v1.12.1
 	github.com/swaggest/swgui v1.8.9
 	golang.org/x/crypto v0.58.0
+	golang.org/x/oauth2 v0.37.0
 )
 
 require (

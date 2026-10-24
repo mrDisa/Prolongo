@@ -71,13 +71,11 @@ Grafana с дашбордом «Prolongo — риск оттока» (клиен
 docker compose --profile grafana up --build
 ```
 
-### Дополнительно (в разработке)
+### Дополнительно
 
-Режимы описаны заранее и заработают по мере готовности задач:
-
-| Команда | Что даст | Готово после |
-| --- | --- | --- |
-| `OIDC_ENABLED=1 docker compose --profile oidc up` | Вход через Keycloak (SSO): `marketer` / `marketer123`; Keycloak на http://localhost:8081 уже поднимается, вход в панель через него — после G12 | G12 |
+| Команда | Что даст |
+| --- | --- |
+| `OIDC_ENABLED=1 docker compose --profile oidc up` | Вход через Keycloak (SSO): `marketer` / `marketer123`. Начать вход: http://localhost:8080/api/v1/auth/oidc/login (или кнопка «Войти через SSO»). Keycloak — http://localhost:8081, его админка — `admin` / `admin` |
 
 ## Как это устроено
 

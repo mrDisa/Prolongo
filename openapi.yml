@@ -124,13 +124,19 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: { code: not_found, message: Вход через SSO выключен } }
+        '503':
+          description: Провайдер (Keycloak) недоступен — например, ещё запускается
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: { code: unavailable, message: 'Сервис входа SSO недоступен, попробуйте позже' } }
 
   /api/v1/auth/oidc/callback:
     get:
       tags: [auth]
       operationId: oidcCallback
       summary: Возврат от OIDC-провайдера (бонус)
-      description: Проверяет state, обменивает код на токены, создаёт сессию и перенаправляет на главную.
+      description: 'Проверяет state, обменивает код на токены (PKCE), проверяет подпись, issuer, audience и nonce ID token, создаёт сессию и перенаправляет на главную. Пользователь ищется по `sub`, не по имени: если имя занято, к нему добавляется суффикс. Ошибки — 401: попытка не начата или устарела (нет cookie, чужой state), вход отменён у провайдера, токен не принят.'
       security: []
       parameters:
         - name: code
@@ -154,6 +160,12 @@ paths:
               description: Cookie сессии
               schema: { type: string, example: 'prolongo_session=Zm9vYmFy; Path=/; HttpOnly; SameSite=Lax' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: OIDC выключен (OIDC_ENABLED=0)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: { code: not_found, message: Вход через SSO выключен } }
 
   /api/v1/customers:
     get:
@@ -764,7 +776,7 @@ components:
             code:
               type: string
               description: Машинный код ошибки — по нему фронт выбирает реакцию
-              enum: [bad_request, unauthorized, invalid_credentials, not_found, method_not_allowed, validation_error, internal]
+              enum: [bad_request, unauthorized, invalid_credentials, not_found, method_not_allowed, validation_error, internal, unavailable]
               example: validation_error
             message:
               type: string
