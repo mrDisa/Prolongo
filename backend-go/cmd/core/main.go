@@ -91,7 +91,9 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		MaxDelay: recalcMaxDelay,
 		Interval: time.Duration(cfg.RecalcIntervalSeconds) * time.Second,
 	}, st, settingsSvc, logger)
+	hub := live.NewHub()
 	worker.OnPublish(func(ctx context.Context, snap *recalc.Snapshot) {
+		hub.Broadcast(api.RecalculatedEvent(snap)) // first: the panel should not wait for the database write
 		if err := st.UpsertRiskDaily(ctx, riskDaily(snap)); err != nil {
 			logger.Error("risk_daily not saved", slog.Any("error", err))
 		}
@@ -126,10 +128,11 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Recalc:      worker,
 		Current:     worker,
 		History:     st,
+		Hub:         hub,
 		Cookie:      api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
 		OIDCEnabled: cfg.OIDC.Enabled,
 	})
-	return serve(ctx, cfg.HTTPAddr, handler, logger)
+	return serve(ctx, cfg.HTTPAddr, handler, logger, hub.Close)
 }
 
 // riskDaily turns a calculation into the day's row of core.risk_daily (day = model "now").
@@ -144,13 +147,17 @@ func riskDaily(snap *recalc.Snapshot) store.RiskDaily {
 }
 
 // serve runs the HTTP server until ctx is cancelled, then lets running requests finish.
-func serve(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
+// onShutdown functions run when shutdown starts: they end long-lived responses (SSE).
+func serve(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger, onShutdown ...func()) error {
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		// No WriteTimeout: the SSE stream (G9) keeps responses open for hours.
+		// No WriteTimeout: the SSE stream keeps responses open for hours.
+	}
+	for _, f := range onShutdown {
+		srv.RegisterOnShutdown(f)
 	}
 
 	errCh := make(chan error, 1)

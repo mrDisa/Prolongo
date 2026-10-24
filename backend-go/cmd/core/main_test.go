@@ -66,3 +66,47 @@ func TestServeAndShutDown(t *testing.T) {
 
 	assert.Equal(t, 1, runHealthcheck(addr), "probe must fail once the server is down")
 }
+
+// A never-ending response (like SSE) must not hold shutdown until the timeout:
+// the onShutdown hook ends it.
+func TestShutdownEndsLongResponses(t *testing.T) {
+	addr := freeAddr(t)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	stop := make(chan struct{})
+	started := make(chan struct{})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		http.NewResponseController(w).Flush()
+		close(started)
+		<-stop // like the SSE loop waiting for events
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, addr, handler, logger, func() { close(stop) }) }()
+	require.Eventually(t, func() bool {
+		c, err := net.Dial("tcp", addr)
+		if err == nil {
+			c.Close()
+		}
+		return err == nil
+	}, 3*time.Second, 20*time.Millisecond)
+
+	go func() {
+		resp, err := http.Get("http://" + addr + "/")
+		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+	}()
+	<-started
+	began := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+		assert.Less(t, time.Since(began), 2*time.Second, "did not wait for the 10 s timeout")
+	case <-time.After(shutdownTimeout + time.Second):
+		t.Fatal("shutdown hung on the open response")
+	}
+}
