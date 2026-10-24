@@ -57,5 +57,11 @@ services:
     volumes: ["./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
     depends_on: [core]
 
+  grafana:
+    image: grafana/grafana:11.2.0
+    profiles: ["grafana"]
+    ports: ["3000:3000"]
+    volumes: ["./deploy/grafana:/etc/grafana/provisioning:ro"]
+
 volumes:
   pgdata:

@@ -65,13 +65,18 @@ DEMO_DATA=1 docker compose up --build
 curl -b cookies.txt -H 'Content-Type: application/json' -d '{"action":"start"}' http://localhost:8080/api/v1/source/simulator
 ```
 
+Grafana с дашбордом «Prolongo — риск оттока» (клиенты по уровням, ожидаемые потери, MRR под риском, длительность пересчёта) — на http://localhost:3000, свой вход `admin` / `admin`, Grafana попросит сменить пароль:
+
+```bash
+docker compose --profile grafana up --build
+```
+
 ### Дополнительно (в разработке)
 
 Режимы описаны заранее и заработают по мере готовности задач:
 
 | Команда | Что даст | Готово после |
 | --- | --- | --- |
-| `docker compose --profile grafana up` | Grafana на http://localhost:3000 | D15 |
 | `OIDC_ENABLED=1 docker compose --profile oidc up` | Вход через Keycloak (SSO) | D15, G12 |
 
 ## Как это устроено
