@@ -33,6 +33,7 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
     let invalidationTimer: number | null = null;
     let fallbackTimer: number | null = null;
     let reconnectTimer: number | null = null;
+    let pendingSettingsInvalidation = false;
     let disposed = false;
 
     const clearFallback = () => {
@@ -40,23 +41,33 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       fallbackTimer = null;
     };
 
-    const invalidateQueries = () => {
+    const invalidateQueries = (includeSettings = false) => {
       lastInvalidationAt = Date.now();
-      void queryClient.invalidateQueries({ predicate: (query) => !['me', 'settings', 'model-settings'].includes(String(query.queryKey[0])) }).then(() => {
+      void queryClient.invalidateQueries({ predicate: (query) => {
+        const key = String(query.queryKey[0]);
+        return key !== 'me' && (includeSettings || !['settings', 'model-settings'].includes(key));
+      } }).then(() => {
         if (!disposed) setCalculationRevision((revision) => revision + 1);
       });
     };
 
-    const scheduleInvalidation = () => {
+    const scheduleInvalidation = (includeSettings = false) => {
+      pendingSettingsInvalidation ||= includeSettings;
       const wait = INVALIDATION_INTERVAL_MS - (Date.now() - lastInvalidationAt);
       if (wait <= 0) {
-        invalidateQueries();
+        const shouldInvalidateSettings = pendingSettingsInvalidation;
+        pendingSettingsInvalidation = false;
+        invalidateQueries(shouldInvalidateSettings);
         return;
       }
       if (invalidationTimer !== null) return;
       invalidationTimer = window.setTimeout(() => {
         invalidationTimer = null;
-        if (!disposed) invalidateQueries();
+        if (!disposed) {
+          const shouldInvalidateSettings = pendingSettingsInvalidation;
+          pendingSettingsInvalidation = false;
+          invalidateQueries(shouldInvalidateSettings);
+        }
       }, wait);
     };
 
@@ -65,16 +76,20 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       setStatus('live');
       clearFallback();
       try {
-        const payload = JSON.parse(event.data) as { calcVersion?: number; calculatedAt?: string };
+        const payload = JSON.parse(event.data) as { calcVersion?: number; calculatedAt?: string; reason?: string };
         if (typeof payload.calculatedAt === 'string') setCalculatedAt(payload.calculatedAt);
         if (typeof payload.calcVersion !== 'number') return;
         if (lastVersion === null) {
           lastVersion = payload.calcVersion;
+          if (payload.reason === 'settings') void queryClient.invalidateQueries({ queryKey: ['model-settings'] });
           return;
         }
-        if (payload.calcVersion === lastVersion) return;
+        if (payload.calcVersion === lastVersion) {
+          if (payload.reason === 'settings') void queryClient.invalidateQueries({ queryKey: ['model-settings'] });
+          return;
+        }
         lastVersion = payload.calcVersion;
-        scheduleInvalidation();
+        scheduleInvalidation(payload.reason === 'settings');
       } catch {
         // Ignore malformed event data and keep the EventSource connection alive.
       }
