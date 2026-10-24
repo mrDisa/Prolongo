@@ -53,6 +53,12 @@ curl -c cookies.txt -H 'Content-Type: application/json' -d '{"username":"admin",
 curl -b cookies.txt -X PUT -F file=@data/test-data/data.json http://localhost:8080/api/v1/source/snapshot
 ```
 
+Расширенные демо-данные — ещё 300 клиентов с типичными сценариями оттока и история смен статусов за 90 дней (всё сгенерированное помечено `demo-…` и `source = demo_backfill`). Добавляются один раз, на уже запущенной базе тоже:
+
+```bash
+DEMO_DATA=1 docker compose up --build
+```
+
 Запустить симулятор потока изменений — каждые 3 секунды время источника уходит на 6 часов вперёд, услуги истекают, клиенты пополняют баланс, панель обновляется сама (`"stop"` — остановить, `"tick"` — один шаг):
 
 ```bash
@@ -65,7 +71,6 @@ curl -b cookies.txt -H 'Content-Type: application/json' -d '{"action":"start"}' 
 
 | Команда | Что даст | Готово после |
 | --- | --- | --- |
-| `DEMO_DATA=1 docker compose up --build` | Расширенные демо-данные и история за 90 дней | D12 |
 | `docker compose --profile grafana up` | Grafana на http://localhost:3000 | D15 |
 | `OIDC_ENABLED=1 docker compose --profile oidc up` | Вход через Keycloak (SSO) | D15, G12 |
 
