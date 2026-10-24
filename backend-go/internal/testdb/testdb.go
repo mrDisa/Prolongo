@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -59,6 +60,19 @@ func New(t testing.TB) *pgxpool.Pool {
 		admin.Close(ctx)
 	})
 	return pool
+}
+
+// URL returns a connection string for the test database behind pool, for code that opens
+// its own connections (the LISTEN listener). pgx's ConnString() returns the original string,
+// so the database name is replaced in the URL itself.
+func URL(t testing.TB, pool *pgxpool.Pool) string {
+	t.Helper()
+	u, err := url.Parse(os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("testdb: TEST_DATABASE_URL: %v", err)
+	}
+	u.Path = "/" + pool.Config().ConnConfig.Database
+	return u.String()
 }
 
 // SourceSchema creates the source tables the way ingest does: the organizers'
