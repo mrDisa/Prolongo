@@ -19,6 +19,12 @@ type Settings = components['schemas']['ModelSettings'];
 type SettingsPatch = components['schemas']['ModelSettingsPatch'];
 type FeatureSetting = components['schemas']['FeatureSetting'];
 type PreviewCustomer = components['schemas']['PreviewCustomer'];
+type PreviewResponse = components['schemas']['PreviewResponse'];
+
+interface PreviewRequest {
+  patch: SettingsPatch;
+  requestId: number;
+}
 
 interface DraftSettings {
   horizonDays: number;
@@ -36,9 +42,11 @@ export default function Model() {
   const [remoteSettingsChanged, setRemoteSettingsChanged] = useState(false);
   const [resetConfirmationOpen, setResetConfirmationOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [lastPreview, setLastPreview] = useState<PreviewResponse>();
   const [toast, setToast] = useState('');
   const baseSettingsRef = useRef<Settings | null>(null);
   const draftRef = useRef<DraftSettings | null>(null);
+  const latestPreviewRequestRef = useRef(0);
   draftRef.current = draft;
 
   const settingsQuery = useModelSettings();
@@ -82,7 +90,10 @@ export default function Model() {
   const valid = draft ? isValidDraft(draft) : false;
 
   const previewMutation = useMutation({
-    mutationFn: (body: SettingsPatch) => unwrap(api.POST('/api/v1/model/preview', { body })),
+    mutationFn: ({ patch: body }: PreviewRequest) => unwrap(api.POST('/api/v1/model/preview', { body })),
+    onSuccess: (result, request) => {
+      if (request.requestId === latestPreviewRequestRef.current) setLastPreview(result);
+    },
   });
   const saveMutation = useMutation({
     mutationFn: (body: SettingsPatch) => unwrap(api.PATCH('/api/v1/model/settings', { body })),
@@ -121,9 +132,12 @@ export default function Model() {
   });
 
   useEffect(() => {
-    if (!draft || !settings || !patch || !valid) return;
-    const timer = window.setTimeout(() => previewMutation.mutate(patch), isDirty ? 250 : 0);
-    return () => window.clearTimeout(timer);
+    if (!draft || !settings || !patch || !valid) {
+      latestPreviewRequestRef.current += 1;
+      return;
+    }
+    const requestId = ++latestPreviewRequestRef.current;
+    previewMutation.mutate({ patch, requestId });
   }, [draft, settings, patch, valid, isDirty, calculationRevision, previewMutation.mutate]);
 
   useEffect(() => {
@@ -137,7 +151,7 @@ export default function Model() {
   }, [isDirty]);
 
   const blocker = useBlocker(isDirty && !saveMutation.isPending && !resetMutation.isPending);
-  const preview = previewMutation.data;
+  const preview = lastPreview;
   const draftCustomers = preview?.customers ?? [];
   const featureMetrics = new Map((preview?.features ?? []).map((feature) => [feature.key, feature]));
   const sortedDraftCustomers = [...draftCustomers].sort((a, b) => b.expectedLossCents - a.expectedLossCents);
@@ -242,10 +256,13 @@ export default function Model() {
                 <h2 id="clients-scale-title" className="font-display text-[20px] font-semibold">Где сейчас клиенты</h2>
                 <p className="mt-1 text-[13px] text-ink-2">Метка — клиент, положение — его score. Нажмите на метку, чтобы разобрать баллы</p>
               </div>
-              {previewMutation.isPending ? <span className="text-[12px] text-ink-3" role="status">Пересчитываем…</span> : null}
             </div>
             {previewMutation.isError && !preview ? (
-              <div className="mt-4"><ErrorState message={previewMutation.error instanceof Error ? previewMutation.error.message : undefined} onRetry={() => patch && previewMutation.mutate(patch)} /></div>
+              <div className="mt-4"><ErrorState message={previewMutation.error instanceof Error ? previewMutation.error.message : undefined} onRetry={() => {
+                if (!patch) return;
+                const requestId = ++latestPreviewRequestRef.current;
+                previewMutation.mutate({ patch, requestId });
+              }} /></div>
             ) : preview ? (
               <div className="mt-4">
                 {previewMutation.isError ? <p role="alert" className="mb-3 text-[12px] text-high-text">Не удалось обновить preview; показаны последние рассчитанные значения.</p> : null}
