@@ -85,7 +85,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error
 		return fmt.Errorf("db: migrate: %w", err)
 	}
 	for _, r := range results {
-		logger.Info("migration applied", slog.String("file", r.Source.Path), slog.Duration("took", r.Duration))
+		logger.Info("migration applied", slog.String("file", r.Source.Path), slog.String("took", r.Duration.Round(time.Millisecond).String()))
 	}
 	return nil
 }
