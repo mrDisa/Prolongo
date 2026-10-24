@@ -71,6 +71,13 @@ func TestTermDays(t *testing.T) {
 	}
 }
 
+func TestTermDuration(t *testing.T) {
+	assert.Equal(t, time.Hour, domain.TermDuration(domain.TermHour))
+	assert.Equal(t, 7*24*time.Hour, domain.TermDuration(domain.TermWeek))
+	assert.Equal(t, 182*24*time.Hour, domain.TermDuration(domain.TermHalfYear))
+	assert.Zero(t, domain.TermDuration("fortnight"))
+}
+
 func TestLive(t *testing.T) {
 	live := map[domain.ServiceStatus]bool{
 		domain.StatusActive: true, domain.StatusSuspended: true, domain.StatusProlongWait: true,

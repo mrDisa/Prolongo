@@ -36,6 +36,16 @@ func TermDays(t PaymentTerm) float64 {
 	return termDays[t]
 }
 
+// TermDuration returns the length of one period as an exact duration, or 0 for an unknown term.
+// Use it for counting whole periods: integer nanoseconds have no rounding error,
+// while 30 / (1/24) in float64 may come out as 720.0000001 and round up to 721.
+func TermDuration(t PaymentTerm) time.Duration {
+	if t == TermHour {
+		return time.Hour
+	}
+	return time.Duration(termDays[t]) * 24 * time.Hour
+}
+
 // ServiceStatus is the lifecycle state of a service.
 type ServiceStatus string
 
