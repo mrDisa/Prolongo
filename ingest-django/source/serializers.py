@@ -4,6 +4,7 @@ Validation mirrors the SQL constraints of 001_schema.up.sql, so bad input
 gets a readable 422 with paths instead of a database error.
 """
 
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from .models import BONUS_STATES, PAYMENT_TERMS, SERVICE_STATUSES, TX_STATUSES, TX_TYPES
@@ -24,6 +25,7 @@ def _id():
     return serializers.IntegerField(min_value=1, max_value=BIGINT_MAX)
 
 
+@extend_schema_serializer(component_name="SourceAccount")
 class AccountDTO(serializers.Serializer):
     id = _id()
     email = serializers.CharField(trim_whitespace=False)
@@ -36,6 +38,7 @@ class AccountDTO(serializers.Serializer):
     )
 
 
+@extend_schema_serializer(component_name="SourceService")
 class ServiceDTO(serializers.Serializer):
     id = _id()
     # \Z instead of $: in Python "$" also matches before a trailing newline, in PostgreSQL it does not.
@@ -58,6 +61,7 @@ class ServiceDTO(serializers.Serializer):
         return attrs
 
 
+@extend_schema_serializer(component_name="SourceTransaction")
 class TransactionDTO(serializers.Serializer):
     id = _id()
     amount = serializers.IntegerField(min_value=0, max_value=1000)
