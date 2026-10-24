@@ -2,10 +2,41 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from './client';
 import { toApiError, unwrap } from './errors';
-import { ME_KEY } from './queries';
+import { ME_KEY, SIMULATOR_KEY, SOURCE_EVENTS_KEY } from './queries';
 import type { components } from './schema';
 
 type LoginRequest = components['schemas']['LoginRequest'];
+type SimulatorAction = components['schemas']['SimulatorAction'];
+
+export function useUploadSnapshot() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (file: File) => unwrap(api.PUT('/api/v1/source/snapshot', {
+      body: { file: file.name },
+      bodySerializer: () => {
+        const form = new FormData();
+        form.append('file', file);
+        return form;
+      },
+    })),
+    onSuccess: () => queryClient.invalidateQueries({
+      predicate: (query) => !['me', 'model-settings'].includes(String(query.queryKey[0])),
+    }),
+  });
+}
+
+export function useControlSimulator() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: SimulatorAction) => unwrap(api.POST('/api/v1/source/simulator', { body })),
+    onSuccess: (state, variables) => {
+      queryClient.setQueryData(SIMULATOR_KEY, state);
+      if (variables.action === 'tick') queryClient.invalidateQueries({ queryKey: SOURCE_EVENTS_KEY });
+    },
+  });
+}
 
 export function useLogin() {
   const queryClient = useQueryClient();
