@@ -259,11 +259,12 @@ function CustomerContent({ customer, thresholds }: {
 export default function Customer() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const { horizonDays, requestHorizonDays, settings } = useHorizon();
+  const { requestHorizonDays, settings } = useHorizon();
   const customerId = Number(id);
   const validId = Number.isInteger(customerId) && customerId > 0;
   const customerQuery = useQuery({
-    queryKey: ['customer', customerId, requestHorizonDays ?? 'model-default', horizonDays ?? null],
+    // Key only on what is sent: the settings horizon loads later and would refetch the same data.
+    queryKey: ['customer', customerId, requestHorizonDays ?? 'model-default'],
     enabled: validId,
     queryFn: () => unwrap(api.GET('/api/v1/customers/{id}', {
       params: { path: { id: customerId }, query: requestHorizonDays === undefined ? {} : { horizonDays: requestHorizonDays } },

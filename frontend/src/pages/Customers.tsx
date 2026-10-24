@@ -62,6 +62,7 @@ export default function Customers() {
     return () => window.clearTimeout(timer);
   }, [searchInput, searchParams, setSearchParams, urlSearch]);
 
+  const horizonQuery = requestHorizonDays === undefined ? {} : { horizonDays: requestHorizonDays };
   const query = {
     sort,
     order,
@@ -69,19 +70,19 @@ export default function Customers() {
     ...(urlSearch ? { search: urlSearch } : {}),
     page,
     pageSize,
+    ...horizonQuery,
   };
+  // Keys hold only what is sent: the settings horizon loads later and would refetch the same data.
   const customersQuery = useQuery({
-    queryKey: ['customers', query, horizonDays ?? 'model-default'],
-    queryFn: () => unwrap(api.GET('/api/v1/customers', {
-      params: { query: { ...query, ...(requestHorizonDays !== undefined ? { horizonDays: requestHorizonDays } : {}) } },
-    })),
+    queryKey: ['customers', query],
+    queryFn: () => unwrap(api.GET('/api/v1/customers', { params: { query } })),
     placeholderData: (previous) => previous,
   });
   const countQueries = useQueries({
     queries: [null, ...RISK_LEVELS.map(({ value }) => value)].map((level) => ({
-      queryKey: ['customers-count', level, urlSearch, horizonDays ?? 'model-default'],
+      queryKey: ['customers-count', level, urlSearch, requestHorizonDays ?? 'model-default'],
       queryFn: () => unwrap(api.GET('/api/v1/customers', {
-        params: { query: { page: 1, pageSize: 1, ...(requestHorizonDays !== undefined ? { horizonDays: requestHorizonDays } : {}), ...(level ? { level } : {}), ...(urlSearch ? { search: urlSearch } : {}) } },
+        params: { query: { page: 1, pageSize: 1, ...horizonQuery, ...(level ? { level } : {}), ...(urlSearch ? { search: urlSearch } : {}) } },
       })),
     })),
   });
