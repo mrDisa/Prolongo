@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/mrDisa/Prolongo/backend-go/internal/auth"
+	"github.com/mrDisa/Prolongo/backend-go/internal/live"
 	"github.com/mrDisa/Prolongo/backend-go/internal/recalc"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 )
@@ -23,6 +24,8 @@ type Deps struct {
 	Recalc      Refresher // nil in tests that do not need recalculation
 	Current     SnapshotSource
 	History     HistorySource
+	Hub         *live.Hub
+	Ping        time.Duration // SSE keep-alive; 0 → 15 s
 	Cookie      CookieConfig
 	OIDCEnabled bool
 }
@@ -40,6 +43,8 @@ type handlers struct {
 	current     SnapshotSource
 	history     HistorySource
 	horizons    *horizonCache
+	hub         *live.Hub
+	ping        time.Duration
 	cookie      CookieConfig
 	oidcEnabled bool
 }
@@ -49,7 +54,13 @@ func NewRouter(d Deps) http.Handler {
 	h := &handlers{
 		logger: d.Logger, auth: d.Auth, settings: d.Settings, recalc: d.Recalc,
 		current: d.Current, history: d.History, horizons: &horizonCache{},
-		cookie: d.Cookie, oidcEnabled: d.OIDCEnabled,
+		hub: d.Hub, ping: d.Ping, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled,
+	}
+	if h.ping <= 0 {
+		h.ping = defaultPing
+	}
+	if h.hub == nil {
+		h.hub = live.NewHub()
 	}
 
 	r := chi.NewRouter()
@@ -79,6 +90,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/customers", h.listCustomers)
 			r.Get("/customers/{id}", h.getCustomer)
 			r.Get("/analytics/summary", h.summary)
+			r.Get("/stream", h.stream)
 		})
 	})
 
