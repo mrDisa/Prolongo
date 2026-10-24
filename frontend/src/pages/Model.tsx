@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, RotateCcw, Save } from 'lucide-react';
+import { ArrowRight, LoaderCircle, RotateCcw, Save } from 'lucide-react';
 import { useBlocker } from 'react-router-dom';
 import { MODEL_SETTINGS_KEY, useModelSettings } from '@/api/queries';
 import type { components } from '@/api/schema';
@@ -13,18 +13,13 @@ import { FeatureWeightRow } from '@/components/FeatureWeightRow';
 import { PageHeader } from '@/components/PageHeader';
 import { ScoreWaterfall } from '@/components/ScoreWaterfall';
 import { formatEUR } from '@/lib/format';
+import { useLivePreview, useSmoothFlag } from '@/lib/useLivePreview';
 import { useLiveUpdates } from '@/live/useLiveUpdates';
 
 type Settings = components['schemas']['ModelSettings'];
 type SettingsPatch = components['schemas']['ModelSettingsPatch'];
 type FeatureSetting = components['schemas']['FeatureSetting'];
 type PreviewCustomer = components['schemas']['PreviewCustomer'];
-type PreviewResponse = components['schemas']['PreviewResponse'];
-
-interface PreviewRequest {
-  patch: SettingsPatch;
-  requestId: number;
-}
 
 interface DraftSettings {
   horizonDays: number;
@@ -42,11 +37,9 @@ export default function Model() {
   const [remoteSettingsChanged, setRemoteSettingsChanged] = useState(false);
   const [resetConfirmationOpen, setResetConfirmationOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [lastPreview, setLastPreview] = useState<PreviewResponse>();
   const [toast, setToast] = useState('');
   const baseSettingsRef = useRef<Settings | null>(null);
   const draftRef = useRef<DraftSettings | null>(null);
-  const latestPreviewRequestRef = useRef(0);
   draftRef.current = draft;
 
   const settingsQuery = useModelSettings();
@@ -89,12 +82,8 @@ export default function Model() {
   const isDirty = dirtyCount > 0;
   const valid = draft ? isValidDraft(draft) : false;
 
-  const previewMutation = useMutation({
-    mutationFn: ({ patch: body }: PreviewRequest) => unwrap(api.POST('/api/v1/model/preview', { body })),
-    onSuccess: (result, request) => {
-      if (request.requestId === latestPreviewRequestRef.current) setLastPreview(result);
-    },
-  });
+  const livePreview = useLivePreview(draft && settings && valid ? patch : null, calculationRevision);
+  const showRecalculating = useSmoothFlag(livePreview.pending);
   const saveMutation = useMutation({
     mutationFn: (body: SettingsPatch) => unwrap(api.PATCH('/api/v1/model/settings', { body })),
     onSuccess: async (saved) => {
@@ -132,15 +121,6 @@ export default function Model() {
   });
 
   useEffect(() => {
-    if (!draft || !settings || !patch || !valid) {
-      latestPreviewRequestRef.current += 1;
-      return;
-    }
-    const requestId = ++latestPreviewRequestRef.current;
-    previewMutation.mutate({ patch, requestId });
-  }, [draft, settings, patch, valid, isDirty, calculationRevision, previewMutation.mutate]);
-
-  useEffect(() => {
     if (!isDirty) return;
     const confirmExit = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -151,7 +131,7 @@ export default function Model() {
   }, [isDirty]);
 
   const blocker = useBlocker(isDirty && !saveMutation.isPending && !resetMutation.isPending);
-  const preview = lastPreview;
+  const preview = livePreview.data;
   const draftCustomers = preview?.customers ?? [];
   const featureMetrics = new Map((preview?.features ?? []).map((feature) => [feature.key, feature]));
   const sortedDraftCustomers = [...draftCustomers].sort((a, b) => b.expectedLossCents - a.expectedLossCents);
@@ -251,21 +231,26 @@ export default function Model() {
 
         <aside className="space-y-6 xl:sticky xl:top-8">
           <section className="rounded-block bg-surface p-6" aria-labelledby="clients-scale-title">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
+            <div>
+              <div className="flex items-center justify-between gap-3">
                 <h2 id="clients-scale-title" className="font-display text-[20px] font-semibold">Где сейчас клиенты</h2>
-                <p className="mt-1 text-[13px] text-ink-2">Метка — клиент, положение — его score. Нажмите на метку, чтобы разобрать баллы</p>
+                {/* Always rendered so it fades in and out without shifting the scale below. */}
+                <span
+                  role="status"
+                  aria-live="polite"
+                  className={`inline-flex shrink-0 items-center gap-1.5 text-[12px] font-medium text-ink-3 transition-opacity duration-300 ${showRecalculating ? 'opacity-100' : 'opacity-0'}`}
+                >
+                  <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
+                  {showRecalculating ? 'Пересчитываем…' : ''}
+                </span>
               </div>
+              <p className="mt-1 text-[13px] text-ink-2">Метка — клиент, положение — его score. Нажмите на метку, чтобы разобрать баллы</p>
             </div>
-            {previewMutation.isError && !preview ? (
-              <div className="mt-4"><ErrorState message={previewMutation.error instanceof Error ? previewMutation.error.message : undefined} onRetry={() => {
-                if (!patch) return;
-                const requestId = ++latestPreviewRequestRef.current;
-                previewMutation.mutate({ patch, requestId });
-              }} /></div>
+            {livePreview.error && !preview ? (
+              <div className="mt-4"><ErrorState message={livePreview.error.message} onRetry={livePreview.retry} /></div>
             ) : preview ? (
-              <div className="mt-4">
-                {previewMutation.isError ? <p role="alert" className="mb-3 text-[12px] text-high-text">Не удалось обновить preview; показаны последние рассчитанные значения.</p> : null}
+              <div className={`mt-4 transition-opacity duration-300 ${showRecalculating ? 'opacity-80' : 'opacity-100'}`}>
+                {livePreview.error ? <p role="alert" className="mb-3 text-[12px] text-high-text">Не удалось обновить preview; показаны последние рассчитанные значения.</p> : null}
                 <ClientsOnScale customers={preview.customers} thresholds={draft.thresholds} selectedId={selectedCustomer?.id ?? null} onSelect={setSelectedId} />
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   <DeltaTile label="Высокий" value={preview.summary.customers.high} baseline={preview.baseline.customers.high} color="high" />
