@@ -33,7 +33,7 @@ function mainReason(customer: Customer): string {
 
 export default function Customers() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { horizonDays } = useHorizon();
+  const { horizonDays, requestHorizonDays } = useHorizon();
   const sortParam = searchParams.get('sort');
   const sort: SortKey = SORTABLE.some(({ key }) => key === sortParam) ? (sortParam as SortKey) : 'expectedLoss';
   const order: 'asc' | 'desc' = searchParams.get('order') === 'asc' ? 'asc' : 'desc';
@@ -69,18 +69,19 @@ export default function Customers() {
     ...(urlSearch ? { search: urlSearch } : {}),
     page,
     pageSize,
-    horizonDays,
   };
   const customersQuery = useQuery({
-    queryKey: ['customers', query],
-    queryFn: () => unwrap(api.GET('/api/v1/customers', { params: { query } })),
+    queryKey: ['customers', query, horizonDays ?? 'model-default'],
+    queryFn: () => unwrap(api.GET('/api/v1/customers', {
+      params: { query: { ...query, ...(requestHorizonDays !== undefined ? { horizonDays: requestHorizonDays } : {}) } },
+    })),
     placeholderData: (previous) => previous,
   });
   const countQueries = useQueries({
     queries: [null, ...RISK_LEVELS.map(({ value }) => value)].map((level) => ({
-      queryKey: ['customers-count', level, urlSearch, horizonDays],
+      queryKey: ['customers-count', level, urlSearch, horizonDays ?? 'model-default'],
       queryFn: () => unwrap(api.GET('/api/v1/customers', {
-        params: { query: { page: 1, pageSize: 1, horizonDays, ...(level ? { level } : {}), ...(urlSearch ? { search: urlSearch } : {}) } },
+        params: { query: { page: 1, pageSize: 1, ...(requestHorizonDays !== undefined ? { horizonDays: requestHorizonDays } : {}), ...(level ? { level } : {}), ...(urlSearch ? { search: urlSearch } : {}) } },
       })),
     })),
   });
@@ -148,7 +149,7 @@ export default function Customers() {
                   <SortableHeader
                     key={column.key}
                     column={column}
-                    label={column.key === 'expectedLoss' ? `${column.label} · ${horizonDays} дн.` : column.label}
+                    label={column.key === 'expectedLoss' ? `${column.label}${horizonDays ? ` · ${horizonDays} дн.` : ''}` : column.label}
                     active={sort === column.key}
                     order={order}
                     onSort={sortBy}
@@ -180,7 +181,7 @@ export default function Customers() {
                   <td className="px-4 py-[18px]"><RiskBadge customer={customer} /></td>
                   <td className="whitespace-nowrap px-4 py-[18px] font-semibold">
                     {customer.scoreStatus === 'no_score' ? '—' : formatEUR(customer.expectedLossCents)}
-                    {customer.scoreStatus !== 'no_score' ? <span className="ml-1 text-[12px] font-medium text-ink-3">/ {horizonDays} дн.</span> : null}
+                    {customer.scoreStatus !== 'no_score' && horizonDays ? <span className="ml-1 text-[12px] font-medium text-ink-3">/ {horizonDays} дн.</span> : null}
                   </td>
                   <td className="max-w-[300px] px-4 py-[18px] text-ink-2"><span className="line-clamp-2">{mainReason(customer)}</span></td>
                 </tr>

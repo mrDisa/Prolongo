@@ -259,22 +259,17 @@ function CustomerContent({ customer, thresholds }: {
 export default function Customer() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const { horizonDays } = useHorizon();
+  const { horizonDays, requestHorizonDays, settings } = useHorizon();
   const customerId = Number(id);
   const validId = Number.isInteger(customerId) && customerId > 0;
   const customerQuery = useQuery({
-    queryKey: ['customer', customerId, horizonDays],
+    queryKey: ['customer', customerId, requestHorizonDays ?? 'model-default', horizonDays ?? null],
     enabled: validId,
     queryFn: () => unwrap(api.GET('/api/v1/customers/{id}', {
-      params: { path: { id: customerId }, query: { horizonDays } },
+      params: { path: { id: customerId }, query: requestHorizonDays === undefined ? {} : { horizonDays: requestHorizonDays } },
     })),
   });
-  const settingsQuery = useQuery({
-    queryKey: ['model-settings'],
-    queryFn: () => unwrap(api.GET('/api/v1/model/settings')),
-    staleTime: 60_000,
-  });
-  const thresholds = settingsQuery.data?.thresholds ?? { medium: 30, high: 60 };
+  const thresholds = settings?.thresholds ?? { medium: 30, high: 60 };
 
   return (
     <>
