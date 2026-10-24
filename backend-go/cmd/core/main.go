@@ -124,6 +124,8 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Auth:        authSvc,
 		Settings:    settingsSvc,
 		Recalc:      worker,
+		Current:     worker,
+		History:     st,
 		Cookie:      api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
 		OIDCEnabled: cfg.OIDC.Enabled,
 	})

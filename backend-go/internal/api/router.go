@@ -21,6 +21,8 @@ type Deps struct {
 	Auth        *auth.Service
 	Settings    *settings.Service
 	Recalc      Refresher // nil in tests that do not need recalculation
+	Current     SnapshotSource
+	History     HistorySource
 	Cookie      CookieConfig
 	OIDCEnabled bool
 }
@@ -35,13 +37,18 @@ type handlers struct {
 	auth        *auth.Service
 	settings    *settings.Service
 	recalc      Refresher
+	current     SnapshotSource
+	history     HistorySource
 	cookie      CookieConfig
 	oidcEnabled bool
 }
 
 // NewRouter builds the HTTP handler with common middleware and all routes.
 func NewRouter(d Deps) http.Handler {
-	h := &handlers{logger: d.Logger, auth: d.Auth, settings: d.Settings, recalc: d.Recalc, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled}
+	h := &handlers{
+		logger: d.Logger, auth: d.Auth, settings: d.Settings, recalc: d.Recalc,
+		current: d.Current, history: d.History, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled,
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -66,6 +73,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/model/settings", h.getSettings)
 			r.Patch("/model/settings", h.patchSettings)
 			r.Post("/model/settings/reset", h.resetSettings)
+			r.Get("/customers", h.listCustomers)
+			r.Get("/customers/{id}", h.getCustomer)
+			r.Get("/analytics/summary", h.summary)
 		})
 	})
 
