@@ -163,14 +163,14 @@ func (h *handlers) listCustomers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, codeBadRequest, err.Error(), nil)
 		return
 	}
-	snap, ok := h.snapshot(w, r)
+	snap, res, ok := h.snapshotAndResult(w, r)
 	if !ok {
 		return
 	}
 
 	var found []*engine.CustomerResult
-	for i := range snap.Customers {
-		if cr := &snap.Customers[i]; q.matches(cr) {
+	for i := range res.Customers {
+		if cr := &res.Customers[i]; q.matches(cr) {
 			found = append(found, cr)
 		}
 	}
@@ -195,11 +195,11 @@ func (h *handlers) getCustomer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, codeBadRequest, "id: целое число от 1", nil)
 		return
 	}
-	snap, ok := h.snapshot(w, r)
+	snap, res, ok := h.snapshotAndResult(w, r)
 	if !ok {
 		return
 	}
-	cr, found := snap.Customer(id)
+	cr, found := res.Customer(id)
 	if !found {
 		writeError(w, http.StatusNotFound, codeNotFound, "Клиент не найден", nil)
 		return
@@ -216,14 +216,14 @@ func (h *handlers) getCustomer(w http.ResponseWriter, r *http.Request) {
 
 // summary: GET /api/v1/analytics/summary.
 func (h *handlers) summary(w http.ResponseWriter, r *http.Request) {
-	snap, ok := h.snapshot(w, r)
+	snap, res, ok := h.snapshotAndResult(w, r)
 	if !ok {
 		return
 	}
-	s := snap.Summary
+	s := res.Summary
 	var out summaryJSON
 	out.CalcVersion, out.CalculatedAt = snap.Version, snap.CalculatedAt
-	out.ReferenceTime, out.ClockMode, out.HorizonDays = snap.Now, snap.ClockMode, snap.HorizonDays
+	out.ReferenceTime, out.ClockMode, out.HorizonDays = res.Now, res.ClockMode, res.HorizonDays
 	out.Customers.Total, out.Customers.High, out.Customers.Medium = s.Customers.Total, s.Customers.High, s.Customers.Medium
 	out.Customers.Low, out.Customers.NoScore = s.Customers.Low, s.Customers.NoScore
 	out.Services.Total, out.Services.Live = s.Services.Total, s.Services.Live
@@ -233,7 +233,7 @@ func (h *handlers) summary(w http.ResponseWriter, r *http.Request) {
 	out.Money.SavableTop20Cents = s.Money.SavableTop20
 	out.TopAtRisk = []customerListItemJSON{}
 	for _, id := range s.TopAtRisk {
-		if cr, ok := snap.Customer(id); ok {
+		if cr, ok := res.Customer(id); ok {
 			out.TopAtRisk = append(out.TopAtRisk, toListItem(cr))
 		}
 	}
