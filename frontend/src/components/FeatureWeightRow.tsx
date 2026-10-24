@@ -11,6 +11,7 @@ export function FeatureWeightRow({ feature, saved, preview, onWeightChange, onEn
   onEnabledChange: (enabled: boolean) => void;
 }) {
   const changed = feature.weight !== saved.weight || feature.enabled !== saved.enabled;
+  const weightChanged = feature.weight !== saved.weight;
   const signLabel = feature.weight < 0 ? 'снижает риск' : 'повышает риск';
 
   return (
@@ -20,7 +21,7 @@ export function FeatureWeightRow({ feature, saved, preview, onWeightChange, onEn
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{feature.title}</h3>
             <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${feature.weight < 0 ? 'bg-low-soft text-low-text' : 'bg-high-soft text-high-text'}`}>{signLabel}</span>
-            {changed ? <span className="text-[12px] font-medium text-accent-text">изменено · было {saved.weight}</span> : null}
+            {changed ? <span className="text-[12px] font-medium text-accent-text">{weightChanged ? `изменено · вес был ${saved.weight}` : 'изменено'}</span> : null}
           </div>
           <p className="mt-1 text-[13px] leading-5 text-ink-2">{feature.description}</p>
         </div>

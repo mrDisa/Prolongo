@@ -3,18 +3,16 @@ import type { components } from '@/api/schema';
 type PreviewCustomer = components['schemas']['PreviewCustomer'];
 
 interface Marker extends PreviewCustomer {
-  baselineScore?: number;
   lane: number;
 }
 
-export function ClientsOnScale({ customers, baselineScores, thresholds, selectedId, onSelect }: {
+export function ClientsOnScale({ customers, thresholds, selectedId, onSelect }: {
   customers: PreviewCustomer[];
-  baselineScores: Map<number, number>;
   thresholds: { medium: number; high: number };
   selectedId: number | null;
   onSelect: (id: number) => void;
 }) {
-  const markers = placeMarkers(customers, baselineScores);
+  const markers = placeMarkers(customers);
   const laneCount = Math.max(2, ...markers.map((marker) => marker.lane + 1));
   const medium = Math.min(100, Math.max(0, thresholds.medium));
   const high = Math.min(100, Math.max(medium, thresholds.high));
@@ -32,7 +30,7 @@ export function ClientsOnScale({ customers, baselineScores, thresholds, selected
                 key={marker.id}
                 type="button"
                 onClick={() => onSelect(marker.id)}
-                title={`${marker.email}: ${marker.baselineScore ?? '—'} → ${marker.riskScoreRaw.toFixed(1)} балла`}
+                title={`${marker.email}: ${marker.riskScoreRaw.toFixed(1)} балла`}
                 aria-pressed={selected}
                 className={`absolute z-10 -translate-x-1/2 whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-[left,top,background-color] duration-300 ${selected ? 'border-accent bg-accent text-accent-ink' : 'border-line-strong bg-surface text-ink hover:border-accent'}`}
                 style={{ left: `${position}%`, top: `${marker.lane * 30}px` }}
@@ -52,7 +50,7 @@ export function ClientsOnScale({ customers, baselineScores, thresholds, selected
   );
 }
 
-function placeMarkers(customers: PreviewCustomer[], baselineScores: Map<number, number>): Marker[] {
+function placeMarkers(customers: PreviewCustomer[]): Marker[] {
   const sorted = [...customers].sort((a, b) => a.riskScoreRaw - b.riskScoreRaw);
   const lastAtLane: number[] = [];
   return sorted.map((customer) => {
@@ -60,6 +58,6 @@ function placeMarkers(customers: PreviewCustomer[], baselineScores: Map<number, 
     let lane = lastAtLane.findIndex((lastPosition) => position - lastPosition >= 11);
     if (lane < 0) lane = lastAtLane.length;
     lastAtLane[lane] = position;
-    return { ...customer, baselineScore: baselineScores.get(customer.id), lane };
+    return { ...customer, lane };
   });
 }
