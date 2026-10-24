@@ -240,7 +240,7 @@ export default function Model() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 id="clients-scale-title" className="font-display text-[20px] font-semibold">Где сейчас клиенты</h2>
-                <p className="mt-1 text-[13px] text-ink-2">Метки сразу двигаются при изменении весов</p>
+                <p className="mt-1 text-[13px] text-ink-2">Метка — клиент, положение — его score. Нажмите на метку, чтобы разобрать баллы</p>
               </div>
               {previewMutation.isPending ? <span className="text-[12px] text-ink-3" role="status">Пересчитываем…</span> : null}
             </div>
@@ -257,10 +257,10 @@ export default function Model() {
                 </div>
                 <div className="mt-3 rounded-tile-lg bg-surface-2 p-4">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-[13px] font-medium text-ink-2">Ожидаемые потери</span>
+                    <span className="text-[13px] font-medium text-ink-2">Ожидаемые потери · {draft.horizonDays} дн.</span>
                     <span className="font-display text-[20px] font-semibold">{formatEUR(preview.summary.money.expectedLossCents)}</span>
                   </div>
-                  <p className="mt-1 text-right text-[12px] text-ink-3">{formatDelta(preview.summary.money.expectedLossCents - preview.baseline.money.expectedLossCents)} к сохранённой модели</p>
+                  <p className="mt-1 text-right text-[12px] text-accent-text">{formatMoneyDelta(preview.summary.money.expectedLossCents - preview.baseline.money.expectedLossCents)}</p>
                 </div>
               </div>
             ) : <ModelPreviewSkeleton />}
@@ -338,12 +338,13 @@ function Step({ number, title, detail, accent = false }: { number: string; title
 }
 
 function DeltaTile({ label, value, baseline, color }: { label: string; value: number; baseline: number; color: 'high' | 'medium' | 'low' }) {
-  const colorClass = color === 'high' ? 'text-high-text' : color === 'medium' ? 'text-med-text' : 'text-low-text';
+  const dotClass = color === 'high' ? 'bg-high' : color === 'medium' ? 'bg-med' : 'bg-low';
+  const delta = value - baseline;
   return (
-    <div className="rounded-tile-lg bg-surface-2 p-3">
-      <p className={`text-[12px] font-semibold ${colorClass}`}>{label}</p>
-      <p className="mt-1 font-display text-[22px] font-semibold">{value}</p>
-      <p className="mt-1 text-[11px] text-ink-3">{formatDelta(value - baseline)} к сохранённой модели</p>
+    <div className="rounded-tile-lg bg-surface-2 p-3 sm:p-4">
+      <p className="flex items-center gap-2 text-[12px] text-ink-2"><span className={`size-2 rounded-full ${dotClass}`} aria-hidden="true" />{label}</p>
+      <p className="mt-1 font-display text-[24px] font-semibold leading-tight">{value}</p>
+      <p className={`mt-2 text-[11px] ${delta === 0 ? 'text-ink-3' : 'text-accent-text'}`}>{delta === 0 ? 'Как в сохранённой модели' : `${formatDelta(delta)} к сохранённой модели`}</p>
     </div>
   );
 }
@@ -425,6 +426,12 @@ function isValidDraft(draft: DraftSettings): boolean {
 
 function formatDelta(value: number): string {
   return value > 0 ? `+${value}` : String(value);
+}
+
+function formatMoneyDelta(value: number): string {
+  if (value === 0) return 'Без изменений к сохранённой модели';
+  const sign = value > 0 ? '+' : '−';
+  return `${sign}${formatEUR(Math.abs(value))} к сохранённой модели`;
 }
 
 function toContributions(customer: PreviewCustomer, features: FeatureSetting[]): components['schemas']['Contribution'][] {

@@ -285,8 +285,8 @@ EXPOSE 8080
 
 ### 5.8 Разработка до готовности бэкенда
 
-1. `npx @stoplight/prism-cli mock ../openapi.yml -p 4010` — ответы берутся из `example` спецификации (Go-разработчик делает их реалистичными).
-2. `vite.config.ts`: proxy `/api` → `http://localhost:4010` (моки) или `http://localhost:8080` (настоящий стек), переключение через `VITE_API_TARGET`.
+1. Для обычной разработки Vite проксирует `/api` на настоящий стек `http://localhost:8080`; `docker compose up` запускает backend и nginx.
+2. Для разработки без backend можно запустить `npx @stoplight/prism-cli mock ../openapi.yml -p 4010` и задать `VITE_API_TARGET=http://localhost:4010`. Переключение задаётся через `VITE_API_TARGET`.
 3. SSE на моках не работает — в `useLiveUpdates` dev-режим `VITE_FAKE_LIVE=1` шлёт фейковый `recalculated` раз в 15 с.
 4. Вёрстку удобно сверять с холстом: у каждого артборда в коде видны все цвета и отступы (открыть артборд → вкладка кода).
 
