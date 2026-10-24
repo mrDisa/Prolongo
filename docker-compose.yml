@@ -1,0 +1,53 @@
+name: prolongo
+
+x-env: &env
+  env_file: .env
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    <<: *env
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      retries: 20
+
+  ingest:
+    build: ./ingest-django
+    <<: *env
+    volumes: [./data:/app/data:ro]
+    depends_on: { postgres: { condition: service_healthy } }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8001/healthz')"]
+      interval: 5s
+      retries: 30
+
+  core:
+    build: ./backend-go
+    <<: *env
+    depends_on: { ingest: { condition: service_healthy } }
+    healthcheck:
+      test: ["CMD", "/core", "-healthcheck"]
+      interval: 5s
+      retries: 30
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports: ["8080:8080"]
+    # nginx resolves every upstream at startup, prometheus included
+    depends_on:
+      core: { condition: service_healthy }
+      prometheus: { condition: service_started }
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    <<: *env
+    entrypoint: ["/bin/sh", "-c", "printf '%s' \"$$METRICS_TOKEN\" > /tmp/metrics_token && exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --web.external-url=/prometheus/ --web.route-prefix=/prometheus/"]
+    volumes: ["./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    depends_on: [core]
+
+volumes:
+  pgdata:
