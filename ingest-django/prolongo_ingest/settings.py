@@ -85,4 +85,19 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["source.auth.HeaderUserAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "EXCEPTION_HANDLER": "source.exceptions.api_exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# Schema of /api/v1/source/* for the shared openapi.yml: python manage.py spectacular --file ingest-openapi.yml
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Prolongo ingest API",
+    "DESCRIPTION": "Источник данных: снимки, точечные события, лента смен статусов, симулятор.",
+    "VERSION": "1.0.0",
+    "SCHEMA_PATH_PREFIX": "/api/v1/source",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "ENUM_NAME_OVERRIDES": {
+        "ServiceStatus": "source.models.SERVICE_STATUSES",
+        "PaymentTerm": "source.models.PAYMENT_TERMS",
+        "EventSource": "source.models.EVENT_SOURCES",
+    },
 }
