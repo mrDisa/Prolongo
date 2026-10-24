@@ -1,6 +1,8 @@
 # Build context of the web image is the repository root (frontend/Dockerfile).
 .git
-.env
+# Local env files anywhere in the tree, including frontend/.env with VITE_* values
+**/.env
+**/.env*.local
 **/node_modules
 **/.venv
 **/__pycache__

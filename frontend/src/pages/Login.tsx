@@ -6,7 +6,7 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { ApiError } from '@/api/errors';
 import { useLogin } from '@/api/mutations';
-import { useMe } from '@/api/queries';
+import { useAuthConfig, useMe } from '@/api/queries';
 import { Logo } from '@/components/Logo';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { safeNext } from '@/lib/auth';
@@ -18,9 +18,6 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
-
-// The API cannot tell an anonymous visitor whether OIDC is on (see .env.example).
-const OIDC_ENABLED = import.meta.env.VITE_OIDC_ENABLED === '1';
 
 const FIELD_BASE =
   'h-[52px] w-full rounded-field border bg-surface px-4 text-[16px] text-ink placeholder:text-ink-3';
@@ -40,6 +37,8 @@ export default function Login() {
   const next = safeNext(params.get('next'));
   const navigate = useNavigate();
   const me = useMe();
+  // The server says whether SSO is on (OIDC_ENABLED), so the image needs no rebuild to switch it.
+  const oidcEnabled = useAuthConfig().data?.oidcEnabled ?? false;
   const login = useLogin();
   const [showPassword, setShowPassword] = useState(false);
   const {
@@ -181,7 +180,7 @@ export default function Login() {
             </p>
           ) : null}
 
-          {OIDC_ENABLED ? (
+          {oidcEnabled ? (
             <>
               <div className="flex items-center gap-3 text-[13px] text-ink-3">
                 <span className="h-px flex-1 bg-line" />
