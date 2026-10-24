@@ -39,6 +39,7 @@ type handlers struct {
 	recalc      Refresher
 	current     SnapshotSource
 	history     HistorySource
+	horizons    *horizonCache
 	cookie      CookieConfig
 	oidcEnabled bool
 }
@@ -47,7 +48,8 @@ type handlers struct {
 func NewRouter(d Deps) http.Handler {
 	h := &handlers{
 		logger: d.Logger, auth: d.Auth, settings: d.Settings, recalc: d.Recalc,
-		current: d.Current, history: d.History, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled,
+		current: d.Current, history: d.History, horizons: &horizonCache{},
+		cookie: d.Cookie, oidcEnabled: d.OIDCEnabled,
 	}
 
 	r := chi.NewRouter()
@@ -73,6 +75,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/model/settings", h.getSettings)
 			r.Patch("/model/settings", h.patchSettings)
 			r.Post("/model/settings/reset", h.resetSettings)
+			r.Post("/model/preview", h.preview)
 			r.Get("/customers", h.listCustomers)
 			r.Get("/customers/{id}", h.getCustomer)
 			r.Get("/analytics/summary", h.summary)
