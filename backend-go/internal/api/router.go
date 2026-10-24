@@ -18,17 +18,17 @@ import (
 
 // Deps is everything the HTTP layer needs. main builds it once at startup.
 type Deps struct {
-	Logger      *slog.Logger
-	Auth        *auth.Service
-	Settings    *settings.Service
-	Recalc      Refresher // nil in tests that do not need recalculation
-	Current     SnapshotSource
-	History     HistorySource
-	Timeline    TimelineSource
-	Hub         *live.Hub
-	Ping        time.Duration // SSE keep-alive; 0 → 15 s
-	Cookie      CookieConfig
-	OIDCEnabled bool
+	Logger   *slog.Logger
+	Auth     *auth.Service
+	Settings *settings.Service
+	Recalc   Refresher // nil in tests that do not need recalculation
+	Current  SnapshotSource
+	History  HistorySource
+	Timeline TimelineSource
+	Hub      *live.Hub
+	Ping     time.Duration // SSE keep-alive; 0 → 15 s
+	Cookie   CookieConfig
+	OIDC     OIDCProvider // nil: SSO is off (OIDC_ENABLED=0)
 
 	Metrics      http.Handler // Prometheus exposition (metrics.Handler); nil → no /metrics route
 	MetricsToken string       // METRICS_TOKEN; empty → only a session opens /metrics
@@ -51,6 +51,7 @@ type handlers struct {
 	hub          *live.Hub
 	ping         time.Duration
 	cookie       CookieConfig
+	oidc         OIDCProvider
 	oidcEnabled  bool
 	metricsToken string
 }
@@ -60,7 +61,7 @@ func NewRouter(d Deps) http.Handler {
 	h := &handlers{
 		logger: d.Logger, auth: d.Auth, settings: d.Settings, recalc: d.Recalc,
 		current: d.Current, history: d.History, timeline: d.Timeline, horizons: &horizonCache{},
-		hub: d.Hub, ping: d.Ping, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled,
+		hub: d.Hub, ping: d.Ping, cookie: d.Cookie, oidc: d.OIDC, oidcEnabled: d.OIDC != nil,
 		metricsToken: d.MetricsToken,
 	}
 	if h.ping <= 0 {
@@ -88,6 +89,8 @@ func NewRouter(d Deps) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", h.login)
 		r.Get("/auth/config", h.authConfig) // public: the login screen has no session
+		r.Get("/auth/oidc/login", h.oidcLogin)
+		r.Get("/auth/oidc/callback", h.oidcCallback)
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.requireSession)

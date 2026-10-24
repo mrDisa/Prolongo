@@ -127,7 +127,7 @@ func TestAuthConfigIsPublic(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.JSONEq(t, `{"oidcEnabled":false}`, rec.Body.String())
 
-	d.OIDCEnabled = true
+	d.OIDC = &fakeOIDC{}
 	rec = do(NewRouter(d), http.MethodGet, "/api/v1/auth/config", "", nil)
 	assert.JSONEq(t, `{"oidcEnabled":true}`, rec.Body.String())
 }

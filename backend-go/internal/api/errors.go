@@ -15,6 +15,7 @@ const (
 	codeMethodNotAllowed   = "method_not_allowed"
 	codeValidation         = "validation_error"
 	codeInternal           = "internal"
+	codeUnavailable        = "unavailable" // a service core depends on is down (the SSO provider)
 )
 
 type errorBody struct {
