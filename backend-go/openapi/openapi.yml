@@ -590,6 +590,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EventsResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
@@ -620,6 +621,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SimulatorState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
