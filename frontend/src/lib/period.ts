@@ -1,8 +1,6 @@
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/api/client';
-import { unwrap } from '@/api/errors';
+import { useModelSettings } from '@/api/queries';
 
 const MAX_HORIZON_DAYS = 365;
 
@@ -16,11 +14,7 @@ export function normalizeHorizon(value: string | null): number | undefined {
 export function useHorizon() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestHorizonDays = normalizeHorizon(searchParams.get('h'));
-  const settingsQuery = useQuery({
-    queryKey: ['model-settings'],
-    queryFn: () => unwrap(api.GET('/api/v1/model/settings')),
-    staleTime: 60_000,
-  });
+  const settingsQuery = useModelSettings();
   const horizonDays = requestHorizonDays ?? settingsQuery.data?.horizonDays;
 
   const setHorizonDays = useCallback((days: number) => {
