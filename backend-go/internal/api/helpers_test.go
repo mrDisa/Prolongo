@@ -14,6 +14,8 @@ import (
 
 	"github.com/mrDisa/Prolongo/backend-go/internal/auth"
 	"github.com/mrDisa/Prolongo/backend-go/internal/auth/authtest"
+	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
+	"github.com/mrDisa/Prolongo/backend-go/internal/settings/settingstest"
 )
 
 const testCookie = "prolongo_session"
@@ -27,7 +29,10 @@ func testDeps(t *testing.T, logger *slog.Logger) Deps {
 	svc, err := auth.NewService(authtest.NewMemStore(), 12*time.Hour)
 	require.NoError(t, err)
 	require.NoError(t, svc.EnsureAdmin(context.Background(), "admin", "admin123"))
-	return Deps{Logger: logger, Auth: svc, Cookie: CookieConfig{Name: testCookie}}
+	settingsSvc := settings.NewService(&settingstest.MemStore{})
+	_, err = settingsSvc.Ensure(context.Background())
+	require.NoError(t, err)
+	return Deps{Logger: logger, Auth: svc, Settings: settingsSvc, Cookie: CookieConfig{Name: testCookie}}
 }
 
 // do sends a request; body may be "", cookie may be nil.

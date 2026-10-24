@@ -9,12 +9,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/mrDisa/Prolongo/backend-go/internal/auth"
+	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 )
 
 // Deps is everything the HTTP layer needs. main builds it once at startup.
 type Deps struct {
 	Logger      *slog.Logger
 	Auth        *auth.Service
+	Settings    *settings.Service
 	Cookie      CookieConfig
 	OIDCEnabled bool
 }
@@ -22,13 +24,14 @@ type Deps struct {
 type handlers struct {
 	logger      *slog.Logger
 	auth        *auth.Service
+	settings    *settings.Service
 	cookie      CookieConfig
 	oidcEnabled bool
 }
 
 // NewRouter builds the HTTP handler with common middleware and all routes.
 func NewRouter(d Deps) http.Handler {
-	h := &handlers{logger: d.Logger, auth: d.Auth, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled}
+	h := &handlers{logger: d.Logger, auth: d.Auth, settings: d.Settings, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -50,6 +53,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Use(h.requireSession)
 			r.Get("/auth/me", h.me)
 			r.Post("/auth/logout", h.logout)
+			r.Get("/model/settings", h.getSettings)
+			r.Patch("/model/settings", h.patchSettings)
+			r.Post("/model/settings/reset", h.resetSettings)
 		})
 	})
 
