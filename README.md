@@ -4,11 +4,13 @@
 
 Решение кейса Aéza «Анализатор рисков оттока», хакатон РНД.
 
-> Статус: каркас репозитория. Сервисы появляются по задачам из `docs/` — раздел «Запуск» заработает после задач D5 / G1 / F1.
-
 ## Запуск
 
-Нужен Docker с Compose v2.
+Нужен Docker с Compose v2 и свободный порт 8080.
+
+```bash
+git clone https://github.com/mrDisa/Prolongo.git prolongo && cd prolongo
+```
 
 ```bash
 cp .env.example .env
@@ -18,31 +20,48 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Открыть http://localhost:8080 и войти: `admin` / `admin123`.
+Первая сборка занимает несколько минут. Когда все сервисы запустятся, открыть http://localhost:8080 и войти: `admin` / `admin123`.
+
+При первом старте загружаются данные организаторов из `data/test-data/` (10 аккаунтов, 30 услуг, 100 транзакций). При следующих запусках данные сохраняются.
 
 | Адрес | Что там |
 | --- | --- |
 | http://localhost:8080 | Панель маркетолога |
 | http://localhost:8080/api/v1/docs | Swagger (после входа) |
-| http://localhost:8080/admin/ | Админка данных (после входа) |
-| http://localhost:8080/metrics | Метрики Prometheus (bearer `METRICS_TOKEN`) |
+| http://localhost:8080/admin/ | Админка данных, без второго входа (после входа в панель) |
+| http://localhost:8080/metrics | Метрики Prometheus (bearer `METRICS_TOKEN` или сессия) — после G10 |
 | http://localhost:8080/prometheus/ | UI Prometheus (после входа) |
 
-Дополнительно:
+Без входа API, админка и UI Prometheus отвечают `401`.
+
+### Полезные команды
+
+| Команда | Что делает |
+| --- | --- |
+| `make up` | То же, что `docker compose up --build`; создаёт `.env`, если его нет |
+| `make logs` | Логи всех сервисов |
+| `make down` | Остановить; данные сохранятся |
+| `make reset` | Остановить и удалить базу: при следующем запуске данные организаторов загрузятся заново |
+
+Загрузить свой снимок в формате `data.json` (полная замена данных):
 
 ```bash
-DEMO_DATA=1 docker compose up --build
+curl -c cookies.txt -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin123"}' http://localhost:8080/api/v1/auth/login
 ```
 
 ```bash
-docker compose --profile grafana up
+curl -b cookies.txt -X PUT -F file=@data/test-data/data.json http://localhost:8080/api/v1/source/snapshot
 ```
 
-```bash
-OIDC_ENABLED=1 docker compose --profile oidc up
-```
+### Дополнительно (в разработке)
 
-При первом старте загружаются данные организаторов из `data/test-data/` (10 аккаунтов, 30 услуг, 100 транзакций).
+Режимы описаны заранее и заработают по мере готовности задач:
+
+| Команда | Что даст | Готово после |
+| --- | --- | --- |
+| `DEMO_DATA=1 docker compose up --build` | Расширенные демо-данные и история за 90 дней | D12 |
+| `docker compose --profile grafana up` | Grafana на http://localhost:3000 | D15 |
+| `OIDC_ENABLED=1 docker compose --profile oidc up` | Вход через Keycloak (SSO) | D15, G12 |
 
 ## Как это устроено
 
