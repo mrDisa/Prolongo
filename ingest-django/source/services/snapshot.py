@@ -18,7 +18,7 @@ def _quoted(columns, prefix=""):
     return ", ".join(f'{prefix}"{c}"' for c in columns)
 
 
-def _upsert(cursor, table, columns, rows):
+def upsert_rows(cursor, table, columns, rows):
     """One INSERT ... ON CONFLICT per table, like the organizers' seed.
 
     Rows that did not change are skipped, so the status trigger and table bloat stay quiet.
@@ -40,7 +40,7 @@ def _delete_missing(cursor, table, ids):
     return cursor.rowcount
 
 
-def _reset_sequence(cursor, table):
+def reset_sequence(cursor, table):
     cursor.execute(
         f"""
         SELECT setval(pg_get_serial_sequence('public.{table}', 'id'),
@@ -73,9 +73,9 @@ def apply_snapshot(payload, source="snapshot"):
             batch = IngestBatch.objects.create(kind=source, data_time=data_time)
             set_context(cursor, source=source, event_time=data_time, batch_id=batch.id)
 
-            _upsert(cursor, "accounts", ACCOUNT_COLUMNS, data["accounts"])
-            _upsert(cursor, "services", SERVICE_COLUMNS, data["services"])
-            _upsert(cursor, "transactions", TRANSACTION_COLUMNS, data["transactions"])
+            upsert_rows(cursor, "accounts", ACCOUNT_COLUMNS, data["accounts"])
+            upsert_rows(cursor, "services", SERVICE_COLUMNS, data["services"])
+            upsert_rows(cursor, "transactions", TRANSACTION_COLUMNS, data["transactions"])
 
             removed = {
                 "transactions": _delete_missing(cursor, "transactions", [t["id"] for t in data["transactions"]]),
@@ -83,7 +83,7 @@ def apply_snapshot(payload, source="snapshot"):
                 "accounts": _delete_missing(cursor, "accounts", [a["id"] for a in data["accounts"]]),
             }
             for table in ("accounts", "services", "transactions"):
-                _reset_sequence(cursor, table)
+                reset_sequence(cursor, table)
 
             if data_time is not None:
                 SourceClock.objects.update_or_create(id=1, defaults={"data_time": data_time})
