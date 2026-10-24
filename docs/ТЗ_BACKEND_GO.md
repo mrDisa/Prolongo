@@ -349,6 +349,12 @@ mrr := Σ round(price × 30 / termDays)
 - Карточка клиента, `statusHistory`: `SELECT service_id, from_status, to_status, occurred_at, source FROM public.status_events WHERE account_id = $1 ORDER BY occurred_at DESC LIMIT 50`.
 - servicesAtRisk из `core.risk_daily`.
 - Прогноз: по живым услугам день = expiresAt (active / suspended) или expiresAt + 5 дн. (prolong_wait); если день < завтра → завтра; суммировать p(s) по дням в пределах futureDays.
+- Как сделано (G11): расчёт — `engine.Result.Timeline` (чистая функция), факты — `store.TimelineFacts` (три запроса в одном read-only снимке), обработчик — `api/timeline.go`.
+  - Дни — UTC. Факт: `pastDays` дней, последний — сегодня (день `referenceTime`). Прогноз: `futureDays` дней с завтра. Срок, который истекает позже сегодня, тоже уходит на завтра: сегодняшняя точка — факт.
+  - p(s) = `ScoreRaw / 100` услуги; `horizonDays` пересчитывает вероятности, как на других экранах. `expectedNonRenewals` округляется до 0,01.
+  - Оценка `deletionsEstimated` не ставится услуге, у которой удаление есть в `status_events` за любой день, — иначе одна услуга посчиталась бы дважды.
+  - `servicesAtRisk` — `null` в днях без строки `risk_daily` и во всех точках прогноза.
+  - 5 дней до удаления — `domain.GraceDays`, `Service.DeletionDue()`.
 
 ## 10. Настройки (`internal/store/settings.go` + `api/settings.go`)
 
