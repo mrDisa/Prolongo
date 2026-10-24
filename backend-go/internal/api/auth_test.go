@@ -18,6 +18,7 @@ var protectedRoutes = []struct{ method, path string }{
 	{http.MethodGet, "/api/v1/customers"},
 	{http.MethodGet, "/api/v1/customers/5"},
 	{http.MethodGet, "/api/v1/analytics/summary"},
+	{http.MethodGet, "/api/v1/analytics/churn-timeline"},
 	{http.MethodPost, "/api/v1/model/preview"},
 	{http.MethodGet, "/api/v1/stream"},
 	{http.MethodGet, "/metrics"}, // without a bearer token: the session decides

@@ -135,6 +135,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Recalc:      worker,
 		Current:     worker,
 		History:     st,
+		Timeline:    st,
 		Hub:         hub,
 		Cookie:      api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
 		OIDCEnabled: cfg.OIDC.Enabled,

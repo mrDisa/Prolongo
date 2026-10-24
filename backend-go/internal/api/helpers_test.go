@@ -41,7 +41,7 @@ func testDeps(t *testing.T, logger *slog.Logger) Deps {
 	snap := referenceSnapshot(t)
 	return Deps{
 		Logger: logger, Auth: svc, Settings: settingsSvc, Cookie: CookieConfig{Name: testCookie},
-		Current: snap, History: fakeHistory{},
+		Current: snap, History: fakeHistory{}, Timeline: &fakeTimeline{},
 		Metrics: metrics.Handler(metrics.New(snap, nil)), MetricsToken: testMetricsToken,
 	}
 }
