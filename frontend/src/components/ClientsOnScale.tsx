@@ -16,38 +16,46 @@ export function ClientsOnScale({ customers, thresholds, selectedId, onSelect }: 
   const laneCount = Math.max(2, ...markers.map((marker) => marker.lane + 1));
   const medium = Math.min(100, Math.max(0, thresholds.medium));
   const high = Math.min(100, Math.max(medium, thresholds.high));
+  const markerAreaHeight = laneCount * 30 + 4;
 
   return (
     <div>
-      <div className="relative rounded-tile-lg bg-surface-2 px-2 pt-4" role="group" aria-label="Клиенты на шкале риска">
-        <div className="relative h-3 rounded-full" style={{ background: `linear-gradient(to right, var(--zone-low) 0% ${medium}%, var(--zone-med) ${medium}% ${high}%, var(--zone-high) ${high}% 100%)` }} />
-        <div className="relative mt-2" style={{ height: `${laneCount * 30 + 8}px` }}>
+      <div className="relative" role="group" aria-label="Клиенты на шкале риска">
+        <div className="relative" style={{ height: `${markerAreaHeight}px` }}>
           {markers.map((marker) => {
             const position = Math.min(98, Math.max(2, marker.riskScoreRaw));
             const selected = marker.id === selectedId;
             return (
-              <button
-                key={marker.id}
-                type="button"
-                onClick={() => onSelect(marker.id)}
-                title={`${marker.email}: ${marker.riskScoreRaw.toFixed(1)} балла`}
-                aria-pressed={selected}
-                className={`absolute z-10 -translate-x-1/2 whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-semibold shadow-sm transition-[left,top,background-color] duration-300 ${selected ? 'border-accent bg-accent text-accent-ink' : 'border-line-strong bg-surface text-ink hover:border-accent'}`}
-                style={{ left: `${position}%`, top: `${marker.lane * 30}px` }}
-              >#{marker.id} · {Math.round(marker.riskScoreRaw)}</button>
+              <span key={marker.id}>
+                <span aria-hidden="true" className={`absolute z-0 w-px transition-[left,top] duration-200 ${selected ? 'bg-accent' : 'bg-line-strong'}`} style={{ left: `${position}%`, top: `${marker.lane * 30 + 26}px`, height: `${markerAreaHeight - marker.lane * 30 - 26}px` }} />
+                <button
+                  type="button"
+                  onClick={() => onSelect(marker.id)}
+                  title={`${marker.email}: ${marker.riskScoreRaw.toFixed(1)} балла`}
+                  aria-pressed={selected}
+                  className={`absolute z-10 -translate-x-1/2 whitespace-nowrap rounded-full border px-2 py-[3px] text-[11px] font-semibold shadow-sm transition-[left,top,background-color,color] duration-200 ${selected ? 'border-accent bg-accent text-accent-ink' : markerBorder(marker.riskLevel)}`}
+                  style={{ left: `${position}%`, top: `${marker.lane * 30}px` }}
+                >#{marker.id} · {Math.round(marker.riskScoreRaw)}</button>
+              </span>
             );
           })}
         </div>
-        <div className="relative h-5 text-[11px] text-ink-3">
-          <span className="absolute left-0">0</span>
-          <span className="absolute -translate-x-1/2" style={{ left: `${medium}%` }}>{medium}</span>
-          <span className="absolute -translate-x-1/2" style={{ left: `${high}%` }}>{high}</span>
-          <span className="absolute right-0">100</span>
+        <div className="relative h-3 rounded-full" style={{ background: `linear-gradient(to right, var(--zone-low) 0% ${medium}%, var(--zone-med) ${medium}% ${high}%, var(--zone-high) ${high}% 100%)` }} />
+        <div className="relative mt-2 h-5 text-[11px]">
+          <span className="absolute left-0 text-ink-3">0</span>
+          <span className="absolute -translate-x-1/2 font-semibold text-low-text" style={{ left: `${medium}%` }}>{medium}</span>
+          <span className="absolute -translate-x-1/2 font-semibold text-high-text" style={{ left: `${high}%` }}>{high}</span>
+          <span className="absolute right-0 text-ink-3">100</span>
         </div>
       </div>
-      <p className="mt-2 text-[12px] text-ink-3">Кликните метку, чтобы посмотреть вклад признаков.</p>
     </div>
   );
+}
+
+function markerBorder(level: PreviewCustomer['riskLevel']): string {
+  if (level === 'high') return 'border-high bg-surface text-ink hover:bg-high-soft';
+  if (level === 'medium') return 'border-med bg-surface text-ink hover:bg-med-soft';
+  return 'border-low bg-surface text-ink hover:bg-low-soft';
 }
 
 function placeMarkers(customers: PreviewCustomer[]): Marker[] {
