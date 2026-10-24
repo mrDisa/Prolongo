@@ -89,6 +89,14 @@ type Service struct {
 	Price       int64 // cents per period
 }
 
+// GraceDays: a prolong_wait service is deleted this many days after its paid period ends.
+const GraceDays = 5
+
+// DeletionDue is when the hoster deletes the service if it stays unpaid: ExpiresAt + GraceDays.
+func (s Service) DeletionDue() time.Time {
+	return s.ExpiresAt.AddDate(0, 0, GraceDays)
+}
+
 // Live reports whether the service still brings money: active, suspended or prolong_wait.
 // blocked and deleted services are out of the risk model.
 func (s Service) Live() bool {
