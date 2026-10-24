@@ -1093,6 +1093,15 @@ components:
       properties:
         referenceTime: { type: string, format: date-time, description: Граница факта и прогноза, example: '2026-10-19T14:35:53.000Z' }
         points: { type: array, description: 'По одной точке на день, по возрастанию даты', items: { $ref: '#/components/schemas/TimelinePoint' } }
+      example:
+        referenceTime: '2026-10-19T14:35:53.000Z'
+        points:
+          - { date: '2026-10-17', kind: fact, deletions: 0, deletionsEstimated: 0, servicesAtRisk: 11 }
+          - { date: '2026-10-18', kind: fact, deletions: 2, deletionsEstimated: 0, servicesAtRisk: 10 }
+          - { date: '2026-10-19', kind: fact, deletions: 1, deletionsEstimated: 0, servicesAtRisk: 9 }
+          - { date: '2026-10-20', kind: forecast, expectedNonRenewals: 4.77, servicesAtRisk: null }
+          - { date: '2026-10-21', kind: forecast, expectedNonRenewals: 0, servicesAtRisk: null }
+          - { date: '2026-10-22', kind: forecast, expectedNonRenewals: 0.35, servicesAtRisk: null }
 
     FeatureSetting:
       type: object

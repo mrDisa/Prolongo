@@ -13,7 +13,7 @@ func init() { Register(prolongWait{}) }
 // after 5 days of grace it is deleted.
 type prolongWait struct{}
 
-const graceDays = 5
+const graceDays = domain.GraceDays
 
 func (prolongWait) Meta() Meta {
 	return Meta{

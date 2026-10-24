@@ -24,6 +24,7 @@ type Deps struct {
 	Recalc      Refresher // nil in tests that do not need recalculation
 	Current     SnapshotSource
 	History     HistorySource
+	Timeline    TimelineSource
 	Hub         *live.Hub
 	Ping        time.Duration // SSE keep-alive; 0 → 15 s
 	Cookie      CookieConfig
@@ -45,6 +46,7 @@ type handlers struct {
 	recalc       Refresher
 	current      SnapshotSource
 	history      HistorySource
+	timeline     TimelineSource
 	horizons     *horizonCache
 	hub          *live.Hub
 	ping         time.Duration
@@ -57,7 +59,7 @@ type handlers struct {
 func NewRouter(d Deps) http.Handler {
 	h := &handlers{
 		logger: d.Logger, auth: d.Auth, settings: d.Settings, recalc: d.Recalc,
-		current: d.Current, history: d.History, horizons: &horizonCache{},
+		current: d.Current, history: d.History, timeline: d.Timeline, horizons: &horizonCache{},
 		hub: d.Hub, ping: d.Ping, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled,
 		metricsToken: d.MetricsToken,
 	}
@@ -98,6 +100,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/customers", h.listCustomers)
 			r.Get("/customers/{id}", h.getCustomer)
 			r.Get("/analytics/summary", h.summary)
+			r.Get("/analytics/churn-timeline", h.churnTimeline)
 			r.Get("/stream", h.stream)
 		})
 	})
