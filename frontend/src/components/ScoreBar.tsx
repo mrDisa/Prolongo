@@ -1,6 +1,6 @@
 import type { Customer } from '@/lib/levels';
 
-export function ScoreBar({ customer }: { customer: Customer }) {
+export function ScoreBar({ customer }: { customer: Pick<Customer, 'riskScore' | 'riskLevel'> }) {
   if (customer.riskScore === null) return <span className="font-display text-[16px] text-ink-3">—</span>;
   const color = customer.riskLevel === 'high' ? 'bg-high' : customer.riskLevel === 'medium' ? 'bg-med' : 'bg-low';
 

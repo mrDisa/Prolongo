@@ -1,7 +1,7 @@
 import type { Customer } from '@/lib/levels';
 import { levelLabel, RISK_LEVEL_STYLES } from '@/lib/levels';
 
-export function RiskBadge({ customer }: { customer: Customer }) {
+export function RiskBadge({ customer }: { customer: Pick<Customer, 'scoreStatus' | 'riskLevel'> }) {
   const isUnrated = customer.scoreStatus === 'no_score';
   const colors = isUnrated
     ? { badge: 'bg-unrated-soft text-unrated-text', dot: 'bg-unrated' }
