@@ -457,6 +457,11 @@ Swagger и openapi.yml тоже за авторизацией на уровне 
 - `/auth/oidc/login`: state + PKCE verifier в короткоживущей cookie (5 мин), редирект на authorize.
 - `/auth/oidc/callback`: проверить state, обменять код, проверить ID token через `oidc.Verifier`, найти / создать пользователя по `sub` (username = `preferred_username`), создать сессию с `auth_method=oidc`, редирект на `/`.
 - `/auth/me` отдаёт `oidcEnabled`, чтобы фронт показал кнопку «Войти через SSO».
+- Как сделано (G12):
+  - `internal/oidc` — протокол: discovery по `OIDC_INTERNAL_URL` (`http://keycloak:8081/...`) с ожидаемым issuer `OIDC_ISSUER_URL` (`oidc.InsecureIssuerURLContext`); Keycloak запущен с `--hostname=http://localhost:8081 --hostname-backchannel-dynamic=true`, поэтому страница входа — на публичном адресе, token и ключи — на внутреннем. Discovery — при первом входе, с повтором до успеха: core стартует, даже если Keycloak ещё грузится (до этого `/auth/oidc/login` → 503 `unavailable`).
+  - Проверки: state (cookie `prolongo_oidc`, Path `/api/v1/auth/oidc/`, 5 мин, HttpOnly, SameSite=Lax; удаляется на callback), PKCE S256, nonce, подпись / issuer / audience / срок ID token.
+  - Пользователь — по `sub`, не по имени: имя `admin` у провайдера не даёт доступа к нашему `admin`; занятое имя получает суффикс `-<8 символов sub>`. Пароля у такого пользователя нет — форма входа его не откроет.
+  - Ошибки callback — 401 с понятным текстом, подробности только в журнале. Выход закрывает нашу сессию; сессия Keycloak остаётся.
 - Важно: issuer должен совпадать для браузера и для core. Используй `OIDC_ISSUER_URL=http://localhost:8081/realms/prolongo` и в compose для core добавь `extra_hosts: ["localhost:host-gateway"]`, либо настрой Keycloak `KC_HOSTNAME`. Проверить до 16-го часа, иначе вырезать.
 
 ## 14. Метрики (`internal/metrics`)
