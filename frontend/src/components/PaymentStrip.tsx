@@ -3,7 +3,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 
 type Transaction = components['schemas']['TransactionItem'];
 
-export function PaymentStrip({ transactions }: { transactions: Transaction[] }) {
+export function PaymentStrip({ transactions, loyalPoints }: { transactions: Transaction[]; loyalPoints: number }) {
   const renewals = transactions.filter((transaction) => transaction.type === 'prolong' && transaction.status === 'performed').length;
   const paid = transactions.filter((transaction) => transaction.status === 'performed').length;
   const failed = transactions.filter((transaction) => transaction.status === 'not_performed').length;
@@ -30,7 +30,11 @@ export function PaymentStrip({ transactions }: { transactions: Transaction[] }) 
       ) : null}
       <p className="mt-3 text-[14px] leading-5 text-ink-2">
         Успешных продлений: <strong className="text-ink">{renewals}</strong>
-        {renewals ? ' — поэтому «стабильно продлевает» снижает риск.' : ' — стабильные продления пока не снижают риск.'}
+        {renewals === 0
+          ? ' — стабильные продления пока не снижают риск.'
+          : loyalPoints < 0
+            ? ` — признак «Стабильно продлевает» снижает риск (${loyalPoints} в лесенке баллов).`
+            : ''}
       </p>
     </div>
   );

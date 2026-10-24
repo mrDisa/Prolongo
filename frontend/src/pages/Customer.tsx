@@ -207,7 +207,7 @@ function CustomerContent({ customer, thresholds }: {
 
           <section className="rounded-block bg-surface p-6" aria-labelledby="payments-title">
             <SectionTitle><span id="payments-title">Платежи</span></SectionTitle>
-            <div className="mt-4"><PaymentStrip transactions={customer.transactions} /></div>
+            <div className="mt-4"><PaymentStrip transactions={customer.transactions} loyalPoints={customer.contributions.find((contribution) => contribution.feature === 'loyal_payer')?.points ?? 0} /></div>
           </section>
 
           <section className="rounded-block bg-surface p-6" aria-labelledby="history-title">
