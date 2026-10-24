@@ -13,6 +13,7 @@ import { FeatureWeightRow } from '@/components/FeatureWeightRow';
 import { PageHeader } from '@/components/PageHeader';
 import { ScoreWaterfall } from '@/components/ScoreWaterfall';
 import { formatEUR } from '@/lib/format';
+import { useLiveUpdates } from '@/live/useLiveUpdates';
 
 type Settings = components['schemas']['ModelSettings'];
 type SettingsPatch = components['schemas']['ModelSettingsPatch'];
@@ -29,6 +30,7 @@ const HORIZONS = [7, 14, 21, 30, 45, 60, 90, 180, 365];
 
 export default function Model() {
   const queryClient = useQueryClient();
+  const { calculationRevision } = useLiveUpdates();
   const [draft, setDraft] = useState<DraftSettings | null>(null);
   const [baseSettings, setBaseSettings] = useState<Settings | null>(null);
   const [remoteSettingsChanged, setRemoteSettingsChanged] = useState(false);
@@ -122,7 +124,7 @@ export default function Model() {
     if (!draft || !settings || !patch || !valid) return;
     const timer = window.setTimeout(() => previewMutation.mutate(patch), isDirty ? 250 : 0);
     return () => window.clearTimeout(timer);
-  }, [draft, settings, patch, valid, isDirty, previewMutation.mutate]);
+  }, [draft, settings, patch, valid, isDirty, calculationRevision, previewMutation.mutate]);
 
   useEffect(() => {
     if (!isDirty) return;

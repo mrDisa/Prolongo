@@ -10,10 +10,10 @@ interface LiveDotProps {
 const DEFAULT_LABEL: Record<LiveStatus, string> = {
   live: 'Live',
   reconnecting: 'Переподключение…',
-  idle: 'Данные пока не загружены',
+  idle: 'Подключаемся…',
 };
 
-/** Live indicator. Wired to the SSE stream in task F7; idle until then. */
+/** Connection state for live recalculation updates. */
 export function LiveDot({ status = 'idle', label }: LiveDotProps) {
   return (
     <div className="flex items-center gap-2 text-[13px] font-medium text-ink-2" role="status">
