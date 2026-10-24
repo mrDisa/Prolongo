@@ -250,7 +250,7 @@ type Feature interface {
 }
 
 func Register(f Feature)   // вызывается из init() каждого файла; паника при дубле ключа
-func All() []Feature       // в порядке регистрации, стабильный порядок по Key
+func All() []Feature       // стабильный порядок по Key (init() вызываются в порядке имён файлов, на него не полагаемся)
 ```
 
 ### 8.2 Реализация каждого признака
@@ -315,7 +315,7 @@ func Now(mode string, fixedAt *time.Time, ds *domain.Dataset, real time.Time) ti
 3. Посчитать account-признаки один раз: для каждого включённого признака `points = weight × value`.
 4. Для каждой живой услуги: service-признаки + account-признаки → `score(s) = clamp(Σ points, 0, 100)`.
 5. `score(a) = max score(s)`; запомнить `riskiestServiceId` и его вклады (contributions — все с `points != 0`, сортировка по |points| desc).
-6. Уровень по порогам; `probability = score / 100`; `loyalty = 100 − score`.
+6. `riskScore = math.Round(score)`; уровень — по порогам от **округлённой** оценки (маркетолог видит «60» → high, без расхождения с числом на экране); `probability = score / 100` и деньги — от **неокруглённой** (иначе не сойдётся эталон: у клиента #5 score 76,71 → €3 383,72); `loyalty = 100 − riskScore`.
 7. Деньги (`money.go`, §9.3).
 8. `topReasons` = первые 3 contributions с points > 0.
 9. `recommendations` = Action признаков с points ≥ 5, по убыванию points.
