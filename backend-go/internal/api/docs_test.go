@@ -22,7 +22,7 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestSpecEndpoint(t *testing.T) {
-	h := NewRouter(slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewRouter(testDeps(t, slog.New(slog.NewJSONHandler(io.Discard, nil))))
 	rec := get(t, h, "/api/v1/openapi.yml")
 
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -31,7 +31,7 @@ func TestSpecEndpoint(t *testing.T) {
 }
 
 func TestSwaggerUI(t *testing.T) {
-	h := NewRouter(slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewRouter(testDeps(t, slog.New(slog.NewJSONHandler(io.Discard, nil))))
 
 	for _, path := range []string{"/api/v1/docs", "/api/v1/docs/"} {
 		rec := get(t, h, path)
