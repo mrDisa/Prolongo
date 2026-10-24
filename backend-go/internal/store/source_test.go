@@ -73,3 +73,34 @@ func TestLoadDatasetWithoutSourceTables(t *testing.T) {
 	_, err := store.New(testdb.New(t)).LoadDataset(context.Background())
 	assert.ErrorContains(t, err, "load accounts", "the error names the step that failed")
 }
+
+func TestStatusHistory(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	testdb.SourceSchema(t, pool)
+	_, err := pool.Exec(ctx, `
+		INSERT INTO public.status_events (service_id, account_id, from_status, to_status, occurred_at, source) VALUES
+			(25, 5, 'active', 'prolong_wait', '2026-10-19T15:10:00Z', 'simulator'),
+			(5, 5, NULL, 'active', '2026-10-18T10:00:00Z', 'snapshot'),
+			(15, 5, 'active', 'suspended', '2026-10-19T16:00:00Z', 'admin'),
+			(1, 1, 'active', 'deleted', '2026-10-19T17:00:00Z', 'sql')`)
+	require.NoError(t, err)
+
+	s := store.New(pool)
+	got, err := s.StatusHistory(ctx, 5, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2, "limit")
+	assert.Equal(t, int64(15), got[0].ServiceID, "newest first")
+	assert.Equal(t, "admin", got[0].Source)
+	assert.Equal(t, "active", *got[1].FromStatus)
+
+	all, err := s.StatusHistory(ctx, 5, 50)
+	require.NoError(t, err)
+	assert.Len(t, all, 3, "only account 5")
+	assert.Nil(t, all[2].FromStatus, "service appeared: no previous status")
+
+	none, err := s.StatusHistory(ctx, 42, 50)
+	require.NoError(t, err)
+	assert.NotNil(t, none, "empty slice, not nil: JSON gives [] instead of null")
+	assert.Empty(t, none)
+}

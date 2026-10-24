@@ -76,7 +76,7 @@ func URL(t testing.TB, pool *pgxpool.Pool) string {
 }
 
 // SourceSchema creates the source tables the way ingest does: the organizers'
-// 001_schema.up.sql plus public.source_clock (Django migration 0002).
+// 001_schema.up.sql plus public.source_clock and public.status_events (Django migration 0002).
 func SourceSchema(t testing.TB, pool *pgxpool.Pool) {
 	t.Helper()
 	execFile(t, pool, "001_schema.up.sql")
@@ -84,9 +84,19 @@ func SourceSchema(t testing.TB, pool *pgxpool.Pool) {
 		CREATE TABLE public.source_clock (
 			id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
 			data_time timestamptz NOT NULL
+		);
+		CREATE TABLE public.status_events (
+			id bigserial PRIMARY KEY,
+			service_id bigint NOT NULL,
+			account_id bigint NOT NULL,
+			from_status text,
+			to_status text NOT NULL,
+			occurred_at timestamptz NOT NULL,
+			source text NOT NULL,
+			batch_id bigint
 		)`)
 	if err != nil {
-		t.Fatalf("testdb: create source_clock: %v", err)
+		t.Fatalf("testdb: create ingest tables: %v", err)
 	}
 }
 
