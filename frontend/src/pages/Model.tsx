@@ -32,6 +32,7 @@ export default function Model() {
   const [draft, setDraft] = useState<DraftSettings | null>(null);
   const [baseSettings, setBaseSettings] = useState<Settings | null>(null);
   const [remoteSettingsChanged, setRemoteSettingsChanged] = useState(false);
+  const [resetConfirmationOpen, setResetConfirmationOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [toast, setToast] = useState('');
   const baseSettingsRef = useRef<Settings | null>(null);
@@ -150,7 +151,11 @@ export default function Model() {
   }
 
   function resetToDefaults() {
-    if (isDirty && !window.confirm('Сбросить сохранённые настройки к стандартным? Несохранённый черновик будет потерян.')) return;
+    setResetConfirmationOpen(true);
+  }
+
+  function confirmReset() {
+    setResetConfirmationOpen(false);
     setToast('');
     resetMutation.mutate();
   }
@@ -294,14 +299,24 @@ export default function Model() {
         </aside>
       </div>
 
-      {blocker.state === 'blocked' ? (
+      {blocker.state === 'blocked' || resetConfirmationOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
           <section role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" className="w-full max-w-md rounded-block bg-surface p-6 shadow-2xl">
-            <h2 id="unsaved-title" className="font-display text-[20px] font-semibold">Есть несохранённые изменения</h2>
-            <p className="mt-2 text-[14px] leading-6 text-ink-2">Если уйти сейчас, черновик модели будет потерян.</p>
+            <h2 id="unsaved-title" className="font-display text-[20px] font-semibold">
+              {resetConfirmationOpen ? 'Вернуть стандартные настройки?' : 'Есть несохранённые изменения'}
+            </h2>
+            <p className="mt-2 text-[14px] leading-6 text-ink-2">
+              {resetConfirmationOpen
+                ? 'Сохранённые настройки модели будут сброшены на сервере, пересчёт запустится сразу и обновление получат все открытые вкладки.'
+                : 'Если уйти сейчас, черновик модели будет потерян.'}
+            </p>
             <div className="mt-5 flex justify-end gap-3">
-              <button type="button" onClick={() => blocker.reset()} className="h-10 rounded-field border border-line-strong px-4 text-[14px] font-semibold">Остаться</button>
-              <button type="button" onClick={() => blocker.proceed()} className="h-10 rounded-field bg-high px-4 text-[14px] font-semibold text-white">Уйти без сохранения</button>
+              <button type="button" onClick={() => resetConfirmationOpen ? setResetConfirmationOpen(false) : blocker.reset?.()} className="h-10 rounded-field border border-line-strong px-4 text-[14px] font-semibold">
+                {resetConfirmationOpen ? 'Отмена' : 'Остаться'}
+              </button>
+              <button type="button" onClick={() => resetConfirmationOpen ? confirmReset() : blocker.proceed?.()} className="h-10 rounded-field bg-high px-4 text-[14px] font-semibold text-white">
+                {resetConfirmationOpen ? 'Сбросить настройки' : 'Уйти без сохранения'}
+              </button>
             </div>
           </section>
         </div>
