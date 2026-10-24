@@ -19,6 +19,7 @@ import (
 	"github.com/mrDisa/Prolongo/backend-go/internal/config"
 	"github.com/mrDisa/Prolongo/backend-go/internal/db"
 	"github.com/mrDisa/Prolongo/backend-go/internal/live"
+	"github.com/mrDisa/Prolongo/backend-go/internal/metrics"
 	"github.com/mrDisa/Prolongo/backend-go/internal/recalc"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 	"github.com/mrDisa/Prolongo/backend-go/internal/store"
@@ -92,6 +93,8 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Interval: time.Duration(cfg.RecalcIntervalSeconds) * time.Second,
 	}, st, settingsSvc, logger)
 	hub := live.NewHub()
+	collector := metrics.New(worker, hub.Count)
+	worker.OnPublish(collector.Observe) // the startup calculation counts too
 	worker.OnPublish(func(ctx context.Context, snap *recalc.Snapshot) {
 		hub.Broadcast(api.RecalculatedEvent(snap)) // first: the panel should not wait for the database write
 		if err := st.UpsertRiskDaily(ctx, riskDaily(snap)); err != nil {
@@ -121,6 +124,10 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	logger.Info("admin user ready", slog.String("username", cfg.AdminUsername))
 	go authSvc.CleanupLoop(ctx, sessionCleanup, logger)
 
+	if cfg.MetricsToken == "" {
+		logger.Warn("METRICS_TOKEN is empty: Prometheus cannot scrape /metrics, only a signed-in session can open it")
+	}
+
 	handler := api.NewRouter(api.Deps{
 		Logger:      logger,
 		Auth:        authSvc,
@@ -131,6 +138,9 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Hub:         hub,
 		Cookie:      api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
 		OIDCEnabled: cfg.OIDC.Enabled,
+
+		Metrics:      metrics.Handler(collector),
+		MetricsToken: cfg.MetricsToken,
 	})
 	return serve(ctx, cfg.HTTPAddr, handler, logger, hub.Close)
 }

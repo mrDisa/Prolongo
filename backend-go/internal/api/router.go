@@ -28,6 +28,9 @@ type Deps struct {
 	Ping        time.Duration // SSE keep-alive; 0 → 15 s
 	Cookie      CookieConfig
 	OIDCEnabled bool
+
+	Metrics      http.Handler // Prometheus exposition (metrics.Handler); nil → no /metrics route
+	MetricsToken string       // METRICS_TOKEN; empty → only a session opens /metrics
 }
 
 // Refresher recalculates the model and waits for the result (*recalc.Worker).
@@ -36,17 +39,18 @@ type Refresher interface {
 }
 
 type handlers struct {
-	logger      *slog.Logger
-	auth        *auth.Service
-	settings    *settings.Service
-	recalc      Refresher
-	current     SnapshotSource
-	history     HistorySource
-	horizons    *horizonCache
-	hub         *live.Hub
-	ping        time.Duration
-	cookie      CookieConfig
-	oidcEnabled bool
+	logger       *slog.Logger
+	auth         *auth.Service
+	settings     *settings.Service
+	recalc       Refresher
+	current      SnapshotSource
+	history      HistorySource
+	horizons     *horizonCache
+	hub          *live.Hub
+	ping         time.Duration
+	cookie       CookieConfig
+	oidcEnabled  bool
+	metricsToken string
 }
 
 // NewRouter builds the HTTP handler with common middleware and all routes.
@@ -55,6 +59,7 @@ func NewRouter(d Deps) http.Handler {
 		logger: d.Logger, auth: d.Auth, settings: d.Settings, recalc: d.Recalc,
 		current: d.Current, history: d.History, horizons: &horizonCache{},
 		hub: d.Hub, ping: d.Ping, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled,
+		metricsToken: d.MetricsToken,
 	}
 	if h.ping <= 0 {
 		h.ping = defaultPing
@@ -74,6 +79,9 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/healthz", health)                // no auth: used by the compose healthcheck
 	r.Get("/internal/auth/verify", h.verify) // nginx only, not proxied to the outside
 	mountDocs(r)
+	if d.Metrics != nil {
+		r.With(h.requireMetricsAccess).Method(http.MethodGet, "/metrics", d.Metrics)
+	}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", h.login)
