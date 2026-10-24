@@ -1,0 +1,10 @@
+# Lint warnings we accept on purpose (see redocly.yaml):
+# - OIDC login and callback only redirect (302), they have no 2xx response.
+# - RecalculatedEvent describes SSE data; OpenAPI 3.1 has no standard way to reference it
+#   from a text/event-stream response, so it is linked via x-sse-events only.
+openapi.yml:
+  operation-2xx-response:
+    - '#/paths/~1api~1v1~1auth~1oidc~1login/get/responses'
+    - '#/paths/~1api~1v1~1auth~1oidc~1callback/get/responses'
+  no-unused-components:
+    - '#/components/schemas/RecalculatedEvent'

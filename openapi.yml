@@ -1,17 +1,24 @@
 openapi: 3.1.0
 info:
   title: Prolongo API
-  version: 0.1.0
+  version: 1.0.0
   description: |
     Анализатор рисков оттока: рейтинг клиентов, причины риска, денежная оценка, настройки модели и источник данных.
 
-    - Деньги — целые евроценты в полях с суффиксом `Cents` (100 = €1).
-    - Даты — ISO 8601 UTC.
-    - Все эндпоинты, кроме `auth/login` и `auth/oidc/*`, требуют сессию (cookie `prolongo_session`).
-    - Источник правды для контракта — этот файл и `docs/ОБЩЕЕ_ТЗ.md` §7. Изменения — только отдельным PR с предупреждением команды.
+    Общие договорённости (`docs/ОБЩЕЕ_ТЗ.md` §7.2):
+    - JSON, поля в camelCase.
+    - Деньги — целые евроценты в полях с суффиксом `Cents` (100 = €1). Фронт форматирует сам: `€1 234,56`.
+    - Даты — ISO 8601 UTC с `Z`, например `2026-10-19T14:35:53.000Z`.
+    - Все эндпоинты, кроме `auth/login` и `auth/oidc/*`, требуют сессию (cookie `prolongo_session`). Без неё — 401.
+    - Ошибки всегда в одном формате: `{"error": {"code", "message", "details"}}`. Неизвестный маршрут — 404 `not_found`, неверный метод — 405 `method_not_allowed`, сбой сервера — 500 `internal`.
+    - Горизонт на лету: эндпоинты клиентов и аналитики принимают `horizonDays` (1–365) и считают с ним, не меняя настроек.
+
+    Примеры в этом файле посчитаны по данным организаторов (`data/test-data/data.json`, часы `data` → 2026-10-19T14:35:53Z, веса по умолчанию). Prism-мок отдаёт именно их.
+
+    Источник правды для контракта — этот файл и `docs/ОБЩЕЕ_ТЗ.md` §7. Владелец — Go-разработчик. Изменения — отдельным PR с сообщением команде.
 servers:
-  - url: http://localhost:8080
-    description: Локальный запуск через docker compose
+  - url: /
+    description: Тот же хост, через nginx (локально — http://localhost:8080)
 security:
   - cookieAuth: []
 tags:
@@ -26,14 +33,15 @@ tags:
   - name: live
     description: Живые обновления
   - name: source
-    description: Источник данных (сервис ingest)
+    description: Источник данных (сервис ingest на Django)
   - name: ops
-    description: Метрики и документация
+    description: Метрики, документация и служебные эндпоинты
 
 paths:
   /api/v1/auth/login:
     post:
       tags: [auth]
+      operationId: login
       summary: Вход по логину и паролю
       security: []
       requestBody:
@@ -43,10 +51,11 @@ paths:
             schema: { $ref: '#/components/schemas/LoginRequest' }
       responses:
         '200':
-          description: Успешный вход. Ставит cookie `prolongo_session` (HttpOnly, SameSite=Lax).
+          description: Успешный вход. Ставит cookie `prolongo_session` (HttpOnly, SameSite=Lax, Path=/, срок — SESSION_TTL_HOURS).
           headers:
             Set-Cookie:
-              schema: { type: string, example: prolongo_session=abc...; Path=/; HttpOnly; SameSite=Lax }
+              description: Cookie сессии
+              schema: { type: string, example: 'prolongo_session=Zm9vYmFy; Path=/; Max-Age=43200; HttpOnly; SameSite=Lax' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
@@ -61,6 +70,7 @@ paths:
   /api/v1/auth/me:
     get:
       tags: [auth]
+      operationId: getMe
       summary: Текущий пользователь
       responses:
         '200':
@@ -73,127 +83,330 @@ paths:
   /api/v1/auth/logout:
     post:
       tags: [auth]
+      operationId: logout
       summary: Завершение сессии
       responses:
-        '204': { description: Сессия удалена, cookie очищена }
+        '204':
+          description: 'Сессия удалена, cookie очищена (Max-Age=-1)'
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/auth/oidc/login:
     get:
       tags: [auth]
+      operationId: oidcLogin
       summary: Вход через OIDC (бонус)
+      description: Редирект на провайдера (Keycloak). Перед этим ставит короткоживущую cookie со state и PKCE.
       security: []
       responses:
-        '302': { description: Редирект на провайдера (Keycloak) }
-        '404': { description: OIDC выключен }
+        '302':
+          description: Редирект на страницу входа провайдера
+          headers:
+            Location:
+              description: Адрес authorize провайдера
+              schema: { type: string, example: 'http://localhost:8081/realms/prolongo/protocol/openid-connect/auth?client_id=prolongo&state=…' }
+        '404':
+          description: OIDC выключен (OIDC_ENABLED=0)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: { code: not_found, message: Вход через SSO выключен } }
 
   /api/v1/auth/oidc/callback:
     get:
       tags: [auth]
+      operationId: oidcCallback
       summary: Возврат от OIDC-провайдера (бонус)
+      description: Проверяет state, обменивает код на токены, создаёт сессию и перенаправляет на главную.
       security: []
       parameters:
-        - { name: code, in: query, required: true, schema: { type: string } }
-        - { name: state, in: query, required: true, schema: { type: string } }
+        - name: code
+          in: query
+          required: true
+          description: Код авторизации от провайдера
+          schema: { type: string, example: 3f1c0e9a-7b2d-4c8e-9f10-2a6b5d4c3e21 }
+        - name: state
+          in: query
+          required: true
+          description: Значение state, которое мы передали на шаге login
+          schema: { type: string, example: k3J9xQ }
       responses:
-        '302': { description: Сессия создана, редирект на `/` }
+        '302':
+          description: 'Сессия создана, редирект на `/`'
+          headers:
+            Location:
+              description: Главная страница панели
+              schema: { type: string, example: / }
+            Set-Cookie:
+              description: Cookie сессии
+              schema: { type: string, example: 'prolongo_session=Zm9vYmFy; Path=/; HttpOnly; SameSite=Lax' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/customers:
     get:
       tags: [customers]
+      operationId: listCustomers
       summary: Рейтинг клиентов с фильтрами, сортировкой и пагинацией
+      description: |
+        Сортировка стабильная: при равенстве — по id asc. Клиенты без оценки — всегда в конце при сортировке по `riskScore` и `expectedLoss` в обоих направлениях.
+        Пагинация применяется после фильтра; `total` — число клиентов после фильтра.
       parameters:
         - name: sort
           in: query
-          schema: { type: string, enum: [id, email, balance, totalReplenished, riskScore, expectedLoss], default: expectedLoss }
+          description: Поле сортировки
+          schema: { type: string, enum: [id, email, balance, totalReplenished, riskScore, expectedLoss], default: expectedLoss, example: expectedLoss }
         - name: order
           in: query
-          schema: { type: string, enum: [asc, desc], default: desc }
+          description: Направление сортировки
+          schema: { type: string, enum: [asc, desc], default: desc, example: desc }
         - name: level
           in: query
-          description: Уровни через запятую. `none` — клиенты без оценки.
+          description: 'Уровни через запятую: high, medium, low, none (`none` — клиенты без оценки). Без параметра — все.'
           schema: { type: string, example: 'high,medium' }
         - name: search
           in: query
-          description: Подстрока email (без учёта регистра) или точный id
-          schema: { type: string }
+          description: Подстрока email без учёта регистра. Если строка — число, ищется ещё и точный id.
+          schema: { type: string, example: user-000 }
         - name: page
           in: query
-          schema: { type: integer, minimum: 1, default: 1 }
+          description: Номер страницы, с 1
+          schema: { type: integer, minimum: 1, default: 1, example: 1 }
         - name: pageSize
           in: query
-          schema: { type: integer, minimum: 1, maximum: 200, default: 25 }
+          description: Клиентов на странице
+          schema: { type: integer, minimum: 1, maximum: 200, default: 25, example: 25 }
         - $ref: '#/components/parameters/HorizonDays'
       responses:
         '200':
-          description: Страница рейтинга. При равенстве — по id asc; без оценки — всегда в конце при сортировке по riskScore / expectedLoss.
+          description: Страница рейтинга
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CustomerListResponse' }
+              examples:
+                topRisk:
+                  summary: Первая страница по ожидаемым потерям
+                  value:
+                    items:
+                      - id: 9
+                        email: user-0009@example.test
+                        balanceCents: 91506
+                        totalReplenishedCents: 269895
+                        scoreStatus: scored
+                        noScoreReason: null
+                        riskScore: 66
+                        riskLevel: high
+                        loyalty: 34
+                        probability: 0.6553
+                        expectedLossCents: 343971
+                        mrrCents: 616544
+                        liveServices: 3
+                        topReasons:
+                          - { feature: expiring_no_autoprolong, points: 30, text: 'service-0009 истекла 40 дн. назад, автопродление выключено' }
+                          - { feature: insufficient_funds, points: 25.5, text: 'На балансе €915,06, на продления за 30 дн. нужно €6 164,50' }
+                          - { feature: suspended, points: 8, text: service-0009 выключен клиентом }
+                      - id: 5
+                        email: user-0005@example.test
+                        balanceCents: 28657
+                        totalReplenishedCents: 293608
+                        scoreStatus: scored
+                        noScoreReason: null
+                        riskScore: 77
+                        riskLevel: high
+                        loyalty: 23
+                        probability: 0.7671
+                        expectedLossCents: 338372
+                        mrrCents: 469140
+                        liveServices: 3
+                        topReasons:
+                          - { feature: prolong_wait, points: 45, text: 'service-0025: срок ожидания оплаты истёк 395 дн. назад — удаление в любой момент' }
+                          - { feature: insufficient_funds, points: 28.2, text: 'На балансе €286,57, на продления за 30 дн. нужно €4 697,65' }
+                          - { feature: new_client, points: 5.5, text: 'Новый клиент: пополнил меньше чем на 3 месяца' }
+                      - id: 1
+                        email: user-0001@example.test
+                        balanceCents: 83810
+                        totalReplenishedCents: 96922
+                        scoreStatus: scored
+                        noScoreReason: null
+                        riskScore: 31
+                        riskLevel: medium
+                        loyalty: 69
+                        probability: 0.3059
+                        expectedLossCents: 20924
+                        mrrCents: 68910
+                        liveServices: 3
+                        topReasons:
+                          - { feature: expiring_no_autoprolong, points: 28.9, text: 'service-0001 истекает через 1 ч, автопродление выключено' }
+                          - { feature: short_billing, points: 5, text: 'Почасовая оплата — легко уйти' }
+                          - { feature: new_client, points: 3.7, text: 'Новый клиент: пополнил меньше чем на 3 месяца' }
+                    total: 10
+                    page: 1
+                    pageSize: 3
+                    calcVersion: 17
+                    calculatedAt: '2026-10-19T14:35:54.204Z'
+                noScore:
+                  summary: 'Клиенты без оценки (level=none)'
+                  value:
+                    items:
+                      - id: 2
+                        email: user-0002@example.test
+                        balanceCents: 32098
+                        totalReplenishedCents: 105256
+                        scoreStatus: no_score
+                        noScoreReason: blocked
+                        riskScore: null
+                        riskLevel: null
+                        loyalty: null
+                        probability: null
+                        expectedLossCents: 0
+                        mrrCents: 0
+                        liveServices: 0
+                        topReasons: []
+                      - id: 3
+                        email: user-0003@example.test
+                        balanceCents: 88696
+                        totalReplenishedCents: 134276
+                        scoreStatus: no_score
+                        noScoreReason: churned
+                        riskScore: null
+                        riskLevel: null
+                        loyalty: null
+                        probability: null
+                        expectedLossCents: 0
+                        mrrCents: 0
+                        liveServices: 0
+                        topReasons: []
+                    total: 4
+                    page: 1
+                    pageSize: 2
+                    calcVersion: 17
+                    calculatedAt: '2026-10-19T14:35:54.204Z'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/customers/{id}:
     get:
       tags: [customers]
+      operationId: getCustomer
       summary: Карточка клиента — услуги, признаки, причины, деньги
       parameters:
         - $ref: '#/components/parameters/CustomerId'
         - $ref: '#/components/parameters/HorizonDays'
       responses:
         '200':
-          description: Подробная оценка
+          description: Подробная оценка клиента
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CustomerDetail' }
+              example:
+                id: 5
+                email: user-0005@example.test
+                balanceCents: 28657
+                withdrawBalanceCents: 7623
+                bonusBalanceCents: 9863
+                bonusState: locked
+                totalReplenishedCents: 293608
+                scoreStatus: scored
+                noScoreReason: null
+                riskScore: 77
+                riskLevel: high
+                loyalty: 23
+                probability: 0.7671
+                money:
+                  horizonDays: 30
+                  revenueCents: 469765
+                  bonusCoveredCents: 0
+                  balanceCoveredCents: 28657
+                  atRiskCents: 441108
+                  expectedLossCents: 338372
+                  mrrCents: 469140
+                  explanation: 'Услуги принесут €4 697,65 за 30 дней. Бонусы заблокированы, €286,57 спишется с баланса автоматически. Под риском €4 411,08, вероятность ухода 77% → ожидаемые потери €3 383,72.'
+                riskiestServiceId: 25
+                contributions:
+                  - { feature: prolong_wait, title: Ожидает оплаты, scope: service, serviceId: 25, value: 1, weight: 45, points: 45, text: 'service-0025: срок ожидания оплаты истёк 395 дн. назад — удаление в любой момент' }
+                  - { feature: insufficient_funds, title: Не хватает денег на продление, scope: account, serviceId: null, value: 0.939, weight: 30, points: 28.2, text: 'На балансе €286,57, на продления за 30 дн. нужно €4 697,65' }
+                  - { feature: loyal_payer, title: Стабильно продлевает, scope: account, serviceId: null, value: 1, weight: -10, points: -10, text: 'Стабильно продлевает: 5 успешных продлений' }
+                  - { feature: new_client, title: Новый клиент, scope: account, serviceId: null, value: 0.791, weight: 7, points: 5.5, text: 'Новый клиент: пополнил меньше чем на 3 месяца' }
+                  - { feature: short_billing, title: Короткий период оплаты, scope: service, serviceId: 25, value: 1, weight: 5, points: 5, text: 'Почасовая оплата — легко уйти' }
+                  - { feature: failed_payments, title: Неудачные платежи, scope: account, serviceId: null, value: 0.3, weight: 10, points: 3, text: 3 из 10 платежей не прошли }
+                recommendations:
+                  - { feature: prolong_wait, action: 'Срочно: письмо или звонок со ссылкой на оплату, предложить отсрочку' }
+                  - { feature: insufficient_funds, action: Предложить пополнение с бонусом +10% }
+                  - { feature: new_client, action: 'Онбординг: письмо с инструкциями, проверка настройки' }
+                  - { feature: short_billing, action: Предложить помесячную оплату со скидкой }
+                services:
+                  - { id: 25, name: service-0025, status: prolong_wait, paymentTerm: hour, autoProlong: true, priceCents: 651, createdAt: '2025-09-14T15:00:00.000Z', expiresAt: '2025-09-14T16:00:00.000Z', daysLeft: -399.9, riskScore: 77, mrrCents: 468720 }
+                  - { id: 5, name: service-0005, status: prolong_wait, paymentTerm: half_year, autoProlong: false, priceCents: 748, createdAt: '2025-09-14T15:00:00.000Z', expiresAt: '2026-03-14T15:00:00.000Z', daysLeft: -219, riskScore: 72, mrrCents: 123 }
+                  - { id: 15, name: service-0015, status: prolong_wait, paymentTerm: month, autoProlong: true, priceCents: 297, createdAt: '2025-09-14T15:00:00.000Z', expiresAt: '2025-10-14T15:00:00.000Z', daysLeft: -370, riskScore: 72, mrrCents: 297 }
+                transactions:
+                  - { id: 25, serviceId: 25, type: order, status: performed, amountCents: 117, createdAt: '2025-09-14T15:05:00.000Z', performedAt: '2025-09-14T15:05:44.000Z' }
+                  - { id: 35, serviceId: 5, type: prolong, status: performed, amountCents: 519, createdAt: '2025-09-14T15:05:00.000Z', performedAt: '2025-09-14T15:05:39.000Z' }
+                  - { id: 75, serviceId: 15, type: prolong, status: not_performed, amountCents: 478, createdAt: '2025-09-14T15:03:00.000Z', performedAt: null }
+                statusHistory:
+                  - { id: 1, serviceId: 25, accountId: 5, fromStatus: active, toStatus: prolong_wait, occurredAt: '2026-10-19T15:10:00.000Z', source: simulator }
+                calcVersion: 17
+                calculatedAt: '2026-10-19T14:35:54.204Z'
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/v1/analytics/summary:
     get:
       tags: [analytics]
+      operationId: getSummary
       summary: Сводка по уровням риска и денежной оценке
       parameters:
         - $ref: '#/components/parameters/HorizonDays'
       responses:
         '200':
-          description: Сводка
+          description: Сводка для экрана «Обзор»
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Summary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/analytics/churn-timeline:
     get:
       tags: [analytics]
-      summary: График оттока — факт и прогноз по дням
+      operationId: getChurnTimeline
+      summary: График оттока — факт и прогноз по дням (бонус)
       parameters:
-        - { name: pastDays, in: query, schema: { type: integer, minimum: 0, maximum: 365, default: 90 } }
-        - { name: futureDays, in: query, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+        - name: pastDays
+          in: query
+          description: Сколько дней факта показать до referenceTime
+          schema: { type: integer, minimum: 0, maximum: 365, default: 90, example: 90 }
+        - name: futureDays
+          in: query
+          description: Сколько дней прогноза показать после referenceTime
+          schema: { type: integer, minimum: 1, maximum: 365, default: 30, example: 30 }
         - $ref: '#/components/parameters/HorizonDays'
       responses:
         '200':
-          description: Точки графика
+          description: Точки графика, по одной на день
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TimelineResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/model/settings:
     get:
       tags: [model]
+      operationId: getModelSettings
       summary: Действующие настройки и коэффициенты модели
       responses:
         '200':
-          description: Настройки. Список `features` строится из реестра признаков в коде.
+          description: Настройки. Список `features` строится из реестра признаков в коде — новый признак появляется здесь без изменения контракта.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ModelSettings' }
         '401': { $ref: '#/components/responses/Unauthorized' }
     patch:
       tags: [model]
+      operationId: patchModelSettings
       summary: Изменение настроек с автоматическим пересчётом
+      description: |
+        Передаются только изменённые поля. Валидация: horizonDays 1–365, 0 < medium < high ≤ 100, weight в [min, max] признака, clock.mode = fixed требует fixedAt.
+        После сохранения — пересчёт и SSE `recalculated` с reason = settings.
       requestBody:
         required: true
         content:
@@ -201,20 +414,32 @@ paths:
             schema: { $ref: '#/components/schemas/ModelSettingsPatch' }
       responses:
         '200':
-          description: Сохранено, пересчёт выполнен, разослано SSE `recalculated`
+          description: Сохранено и пересчитано. Ответ — полный объект настроек с новым version.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ModelSettings' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '422': { $ref: '#/components/responses/ValidationError' }
+        '422':
+          description: Ошибка валидации; details — пути к полям
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error:
+                  code: validation_error
+                  message: Настройки не прошли проверку
+                  details:
+                    thresholds.medium: ['Должен быть меньше high (60)']
+                    features.prolong_wait.weight: ['Допустимо от 0 до 100']
 
   /api/v1/model/settings/reset:
     post:
       tags: [model]
+      operationId: resetModelSettings
       summary: Вернуть стандартные веса, пороги, горизонт и часы
       responses:
         '200':
-          description: Настройки после сброса
+          description: Настройки после сброса, с новым version. Пересчёт и SSE — как у PATCH.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ModelSettings' }
@@ -223,8 +448,9 @@ paths:
   /api/v1/model/preview:
     post:
       tags: [model]
+      operationId: previewModelSettings
       summary: Посчитать черновик настроек без сохранения
-      description: Тело — как у PATCH. Ничего не сохраняет и не рассылает SSE.
+      description: Тело — как у PATCH, накладывается поверх текущих настроек. Ничего не сохраняет и не рассылает SSE. Для живого предпросмотра на странице «Модель».
       requestBody:
         required: true
         content:
@@ -243,66 +469,102 @@ paths:
   /api/v1/stream:
     get:
       tags: [live]
-      summary: Server-Sent Events
+      operationId: streamEvents
+      summary: Server-Sent Events — живые обновления
       description: |
-        События:
-        - `recalculated` — `{"calcVersion": 18, "calculatedAt": "...", "reason": "data|settings|timer|startup"}`
-        - `ping` — `{}` каждые 15 секунд
+        Сразу после подключения приходит текущий `recalculated`, чтобы клиент синхронизировался.
+        - `recalculated` — пересчёт завершён, данные на экране пора обновить. Тело — `RecalculatedEvent`.
+        - `ping` — `{}` каждые 15 секунд, чтобы соединение не закрылось.
       responses:
         '200':
-          description: Поток событий
+          description: Поток событий (Content-Type text/event-stream, соединение не закрывается)
           content:
             text/event-stream:
-              schema: { type: string }
+              schema: { type: string, description: 'Строки формата SSE: event и data' }
               example: |
                 event: recalculated
-                data: {"calcVersion": 18, "calculatedAt": "2026-10-19T15:00:05.100Z", "reason": "settings"}
+                data: {"calcVersion": 18, "calculatedAt": "2026-10-19T14:36:05.100Z", "reason": "settings"}
+
+                event: ping
+                data: {}
+          x-sse-events:
+            recalculated: { $ref: '#/components/schemas/RecalculatedEvent' }
+            ping: { type: object, description: Пустой объект, example: {} }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/source/snapshot:
     put:
       tags: [source]
+      operationId: putSnapshot
       summary: Загрузка или полная замена снимка данных (сервис ingest)
+      description: |
+        Тело — в формате `data.json` организаторов: JSON или multipart-файл в поле `file` (до 20 МБ).
+        Записи, которых нет в снимке, удаляются; смены статусов попадают в историю (`source = snapshot`). Всё в одной транзакции.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Snapshot' }
+            schema: { $ref: '#/components/schemas/SnapshotRequest' }
           multipart/form-data:
             schema:
               type: object
               required: [file]
               properties:
-                file: { type: string, format: binary, description: JSON в формате data.json }
+                file: { type: string, format: binary, description: JSON-файл в формате data.json }
       responses:
         '200':
           description: Снимок применён
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SnapshotResponse' }
+        '400':
+          description: 'Неверный запрос: нет поля file, файл не JSON или больше 20 МБ'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: { code: bad_request, message: Файл не является корректным JSON } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
   /api/v1/source/events:
     get:
       tags: [source]
-      summary: Лента смен статусов услуг
+      operationId: listSourceEvents
+      summary: Лента смен статусов услуг (бонус)
       parameters:
-        - { name: accountId, in: query, schema: { type: integer } }
-        - { name: serviceId, in: query, schema: { type: integer } }
-        - { name: source, in: query, schema: { $ref: '#/components/schemas/EventSource' } }
-        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - name: accountId
+          in: query
+          description: Только события услуг этого аккаунта
+          schema: { type: integer, minimum: 1, example: 5 }
+        - name: serviceId
+          in: query
+          description: Только события этой услуги
+          schema: { type: integer, minimum: 1, example: 25 }
+        - name: source
+          in: query
+          description: Только события из этого источника
+          schema: { $ref: '#/components/schemas/EventSource' }
+        - name: page
+          in: query
+          description: Номер страницы, с 1
+          schema: { type: integer, minimum: 1, default: 1, example: 1 }
+        - name: pageSize
+          in: query
+          description: Событий на странице
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50, example: 50 }
       responses:
         '200':
           description: События, новые сверху
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StatusEventList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [source]
-      summary: Точечные изменения данных («поток в реальном времени»)
+      operationId: postSourceEvents
+      summary: Точечные изменения данных — «поток в реальном времени» (бонус)
+      description: upsert с неполными полями — частичное обновление существующей записи; новая запись требует все обязательные поля.
       requestBody:
         required: true
         content:
@@ -320,17 +582,19 @@ paths:
   /api/v1/source/simulator:
     get:
       tags: [source]
-      summary: Состояние симулятора
+      operationId: getSimulator
+      summary: Состояние симулятора (бонус)
       responses:
         '200':
-          description: Состояние
+          description: Текущее состояние
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SimulatorState' }
         '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [source]
-      summary: Запуск, остановка или один шаг симулятора
+      operationId: controlSimulator
+      summary: Запуск, остановка или один шаг симулятора (бонус)
       requestBody:
         required: true
         content:
@@ -348,7 +612,9 @@ paths:
   /metrics:
     get:
       tags: [ops]
+      operationId: getMetrics
       summary: Агрегированные метрики в формате Prometheus
+      description: 'Доступ: `Authorization: Bearer <METRICS_TOKEN>` (для Prometheus) или сессия. Значения совпадают с API — читаются из того же расчёта.'
       security:
         - metricsBearer: []
         - cookieAuth: []
@@ -357,13 +623,15 @@ paths:
           description: Text exposition format
           content:
             text/plain:
-              schema: { type: string }
+              schema: { type: string, description: Метрики Prometheus }
               example: |
+                # HELP prolongo_customers Customers by risk level
                 # TYPE prolongo_customers gauge
                 prolongo_customers{level="high"} 2
                 prolongo_customers{level="medium"} 2
                 prolongo_customers{level="low"} 2
                 prolongo_customers{level="none"} 4
+                # HELP prolongo_expected_loss_eur Expected loss over the horizon, EUR
                 # TYPE prolongo_expected_loss_eur gauge
                 prolongo_expected_loss_eur 7032.67
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -371,24 +639,48 @@ paths:
   /api/v1/docs:
     get:
       tags: [ops]
+      operationId: getSwaggerUI
       summary: Swagger UI
+      description: Документация по этому файлу. Снаружи закрыта nginx — открывается внутри сессии.
       responses:
         '200':
           description: HTML-страница документации
           content:
             text/html:
-              schema: { type: string }
+              schema: { type: string, description: HTML Swagger UI }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /api/v1/openapi.yml:
     get:
       tags: [ops]
+      operationId: getOpenAPISpec
       summary: Этот файл спецификации
       responses:
         '200':
-          description: OpenAPI 3.1
+          description: OpenAPI 3.1 в YAML
           content:
             application/yaml:
-              schema: { type: string }
+              schema: { type: string, description: Текст спецификации }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /internal/auth/verify:
+    get:
+      tags: [ops]
+      operationId: verifySession
+      summary: Проверка сессии для nginx auth_request
+      description: Только для nginx, наружу не проксируется. nginx вызывает его перед каждым запросом в ingest и передаёт X-Auth-User дальше.
+      responses:
+        '200':
+          description: Сессия валидна. Тела нет.
+          headers:
+            X-Auth-User:
+              description: Логин пользователя сессии
+              schema: { type: string, example: admin }
+            X-Auth-User-Id:
+              description: id пользователя сессии
+              schema: { type: integer, example: 1 }
+        '401':
+          description: Нет сессии или она истекла. Тела нет.
 
 components:
   securitySchemes:
@@ -396,6 +688,7 @@ components:
       type: apiKey
       in: cookie
       name: prolongo_session
+      description: Cookie сессии, ставится при входе
     metricsBearer:
       type: http
       scheme: bearer
@@ -406,12 +699,13 @@ components:
       name: id
       in: path
       required: true
+      description: id аккаунта клиента
       schema: { type: integer, minimum: 1, example: 5 }
     HorizonDays:
       name: horizonDays
       in: query
       required: false
-      description: Горизонт прогноза на лету (1–365). Без параметра — из настроек модели. Настройки не меняет.
+      description: Горизонт прогноза на лету (1–365 дней). Без параметра — из настроек модели. Настройки не меняет.
       schema: { type: integer, minimum: 1, maximum: 365, example: 30 }
 
   responses:
@@ -443,501 +737,625 @@ components:
   schemas:
     Error:
       type: object
+      description: Единый формат ошибок всех сервисов
       required: [error]
       properties:
         error:
           type: object
+          description: Описание ошибки
           required: [code, message]
           properties:
-            code: { type: string, enum: [bad_request, unauthorized, invalid_credentials, not_found, validation_error, internal] }
-            message: { type: string }
+            code:
+              type: string
+              description: Машинный код ошибки — по нему фронт выбирает реакцию
+              enum: [bad_request, unauthorized, invalid_credentials, not_found, method_not_allowed, validation_error, internal]
+              example: validation_error
+            message:
+              type: string
+              description: Текст для человека, по-русски
+              example: Данные не прошли проверку
             details:
               type: object
+              description: 'Для validation_error: путь к полю → список сообщений'
               additionalProperties: { type: array, items: { type: string } }
+              example: { 'services[3].status': ['Недопустимое значение: paused'] }
 
     LoginRequest:
       type: object
+      description: Логин и пароль
       required: [username, password]
       properties:
-        username: { type: string, example: admin }
-        password: { type: string, format: password, example: admin123 }
+        username: { type: string, description: Логин, example: admin }
+        password: { type: string, format: password, description: Пароль, example: admin123 }
 
     User:
       type: object
+      description: Пользователь панели
       required: [id, username, displayName, authMethod]
       properties:
-        id: { type: integer, example: 1 }
-        username: { type: string, example: admin }
-        displayName: { type: string, example: Администратор }
-        authMethod: { type: string, enum: [password, oidc] }
+        id: { type: integer, description: id пользователя, example: 1 }
+        username: { type: string, description: Логин, example: admin }
+        displayName: { type: string, description: Имя для шапки панели, example: Администратор }
+        authMethod: { type: string, enum: [password, oidc], description: Как вошёл в текущую сессию, example: password }
 
     LoginResponse:
       type: object
+      description: Ответ на успешный вход
       required: [user]
       properties:
         user: { $ref: '#/components/schemas/User' }
 
     MeResponse:
       type: object
+      description: Текущий пользователь и доступные способы входа
       required: [user, oidcEnabled]
       properties:
         user: { $ref: '#/components/schemas/User' }
-        oidcEnabled: { type: boolean, example: false }
+        oidcEnabled: { type: boolean, description: Показывать ли кнопку «Войти через SSO», example: false }
 
     RiskLevel:
       type: string
+      description: 'Уровень риска по порогам модели: high ≥ 60, medium 30–59, low < 30 (пороги настраиваются)'
       enum: [high, medium, low]
+      example: high
     ScoreStatus:
       type: string
+      description: 'scored — оценка есть; no_score — оценить нельзя, причина в noScoreReason'
       enum: [scored, no_score]
+      example: scored
     NoScoreReason:
       type: string
+      description: 'no_services — нет услуг; churned — все услуги удалены, клиент уже ушёл; blocked — все услуги заблокированы'
       enum: [no_services, churned, blocked]
+      example: churned
     FeatureKey:
       type: string
-      description: Ключ признака. Список расширяемый — новые признаки появляются без изменения контракта.
+      description: Ключ признака модели. Список расширяемый — новые признаки появляются без изменения контракта.
       examples: [prolong_wait, expiring_no_autoprolong, insufficient_funds, failed_payments, churn_history, suspended, short_billing, new_client, loyal_payer]
     ServiceStatus:
       type: string
+      description: 'Статус услуги: active, suspended, prolong_wait — живые; blocked и deleted — нет'
       enum: [active, blocked, deleted, suspended, prolong_wait]
+      example: prolong_wait
     PaymentTerm:
       type: string
+      description: 'Период оплаты: hour — 1/24 дня, week — 7, month — 30, quarter_year — 91, half_year — 182, year — 365'
       enum: [hour, week, month, quarter_year, half_year, year]
+      example: month
     EventSource:
       type: string
+      description: 'Кто изменил данные: seed — стартовая загрузка, snapshot — загрузка снимка, event — точечное событие, admin — админка, simulator — симулятор, sql — прямой SQL, demo_backfill — демо-история'
       enum: [seed, snapshot, event, admin, simulator, sql, demo_backfill]
+      example: snapshot
+    FeatureScope:
+      type: string
+      description: 'service — считается для каждой услуги; account — для аккаунта целиком и прибавляется к каждой его услуге'
+      enum: [service, account]
+      example: service
 
     Reason:
       type: object
+      description: Причина риска для списка — признак, его баллы и текст
       required: [feature, points, text]
       properties:
         feature: { $ref: '#/components/schemas/FeatureKey' }
-        points: { type: number, example: 45 }
-        text: { type: string, example: 'service-0025: срок ожидания оплаты истёк' }
+        points: { type: number, description: 'Баллы признака, до одного знака после запятой', example: 45 }
+        text: { type: string, description: Объяснение для маркетолога, example: 'service-0025: срок ожидания оплаты истёк 395 дн. назад — удаление в любой момент' }
 
     CustomerListItem:
       type: object
-      required: [id, email, balanceCents, totalReplenishedCents, scoreStatus, riskScore, riskLevel, loyalty, probability, expectedLossCents, mrrCents, liveServices, topReasons]
+      description: 'Строка рейтинга. Для no_score: riskScore, riskLevel, loyalty, probability = null, expectedLossCents = 0, topReasons = []'
+      required: [id, email, balanceCents, totalReplenishedCents, scoreStatus, noScoreReason, riskScore, riskLevel, loyalty, probability, expectedLossCents, mrrCents, liveServices, topReasons]
       properties:
-        id: { type: integer, example: 5 }
-        email: { type: string, example: user-0005@example.test }
-        balanceCents: { type: integer, example: 28657 }
-        totalReplenishedCents: { type: integer, example: 293608 }
+        id: { type: integer, description: id аккаунта, example: 5 }
+        email: { type: string, description: Email аккаунта, example: user-0005@example.test }
+        balanceCents: { type: integer, description: 'Баланс, центы', example: 28657 }
+        totalReplenishedCents: { type: integer, description: 'Всего пополнено за всё время, центы', example: 293608 }
         scoreStatus: { $ref: '#/components/schemas/ScoreStatus' }
         noScoreReason:
+          description: Почему нет оценки; null, если оценка есть
           oneOf: [{ $ref: '#/components/schemas/NoScoreReason' }, { type: 'null' }]
-        riskScore: { type: [integer, 'null'], minimum: 0, maximum: 100, example: 77 }
+        riskScore: { type: [integer, 'null'], minimum: 0, maximum: 100, description: 'Оценка риска 0–100 — максимум по живым услугам, округлён', example: 77 }
         riskLevel:
+          description: Уровень риска; null без оценки
           oneOf: [{ $ref: '#/components/schemas/RiskLevel' }, { type: 'null' }]
-        loyalty: { type: [integer, 'null'], example: 23 }
-        probability: { type: [number, 'null'], example: 0.767 }
-        expectedLossCents: { type: integer, example: 338372 }
-        mrrCents: { type: integer, example: 469140 }
-        liveServices: { type: integer, example: 3 }
+        loyalty: { type: [integer, 'null'], minimum: 0, maximum: 100, description: Лояльность = 100 − riskScore, example: 23 }
+        probability: { type: [number, 'null'], minimum: 0, maximum: 1, description: 'Вероятность непродления = неокруглённая оценка / 100', example: 0.7671 }
+        expectedLossCents: { type: integer, description: 'Ожидаемые потери за горизонт = probability × atRisk, центы', example: 338372 }
+        mrrCents: { type: integer, description: 'Месячная выручка живых услуг, центы', example: 469140 }
+        liveServices: { type: integer, description: 'Число живых услуг (active, suspended, prolong_wait)', example: 3 }
         topReasons:
           type: array
+          description: До 3 главных причин по убыванию баллов
           maxItems: 3
           items: { $ref: '#/components/schemas/Reason' }
 
     CustomerListResponse:
       type: object
+      description: Страница рейтинга
       required: [items, total, page, pageSize, calcVersion, calculatedAt]
       properties:
-        items: { type: array, items: { $ref: '#/components/schemas/CustomerListItem' } }
-        total: { type: integer, example: 10 }
-        page: { type: integer, example: 1 }
-        pageSize: { type: integer, example: 25 }
-        calcVersion: { type: integer, example: 17 }
-        calculatedAt: { type: string, format: date-time }
+        items: { type: array, description: Клиенты на странице, items: { $ref: '#/components/schemas/CustomerListItem' } }
+        total: { type: integer, description: Клиентов после фильтра, example: 10 }
+        page: { type: integer, description: Номер страницы, example: 1 }
+        pageSize: { type: integer, description: Размер страницы, example: 25 }
+        calcVersion: { type: integer, description: Номер пересчёта — растёт с каждым пересчётом, example: 17 }
+        calculatedAt: { type: string, format: date-time, description: Когда выполнен пересчёт, example: '2026-10-19T14:35:54.204Z' }
 
     Money:
       type: object
+      description: Денежная оценка клиента за горизонт (`docs/ОБЩЕЕ_ТЗ.md` §5)
       required: [horizonDays, revenueCents, bonusCoveredCents, balanceCoveredCents, atRiskCents, expectedLossCents, mrrCents, explanation]
       properties:
-        horizonDays: { type: integer, example: 30 }
-        revenueCents: { type: integer, example: 469765, description: Сколько живые услуги принесли бы за горизонт }
-        bonusCoveredCents: { type: integer, example: 0 }
-        balanceCoveredCents: { type: integer, example: 28657 }
-        atRiskCents: { type: integer, example: 441108 }
-        expectedLossCents: { type: integer, example: 338372 }
-        mrrCents: { type: integer, example: 469140 }
-        explanation: { type: string, example: 'Услуги принесут €4 697,65 за 30 дней. Бонусы заблокированы, €286,57 спишется с баланса автоматически. Под риском €4 411,08, вероятность ухода 77% → ожидаемые потери €3 383,72.' }
+        horizonDays: { type: integer, description: 'Горизонт расчёта, дней', example: 30 }
+        revenueCents: { type: integer, description: 'Сколько живые услуги принесли бы за горизонт, центы', example: 469765 }
+        bonusCoveredCents: { type: integer, description: 'Сколько покроют бонусы (только если bonusState = unlocked), центы', example: 0 }
+        balanceCoveredCents: { type: integer, description: 'Сколько спишется с баланса автоматически (услуги с автопродлением), центы', example: 28657 }
+        atRiskCents: { type: integer, description: 'Под риском = revenue − bonusCovered − balanceCovered, не меньше 0, центы', example: 441108 }
+        expectedLossCents: { type: integer, description: 'Ожидаемые потери = probability × atRisk, центы', example: 338372 }
+        mrrCents: { type: integer, description: 'Месячная выручка живых услуг, центы', example: 469140 }
+        explanation: { type: string, description: Расчёт словами для карточки, example: 'Услуги принесут €4 697,65 за 30 дней. Бонусы заблокированы, €286,57 спишется с баланса автоматически. Под риском €4 411,08, вероятность ухода 77% → ожидаемые потери €3 383,72.' }
 
     Contribution:
       type: object
-      required: [feature, title, scope, value, weight, points, text]
+      description: Вклад признака в оценку самой рисковой услуги
+      required: [feature, title, scope, serviceId, value, weight, points, text]
       properties:
         feature: { $ref: '#/components/schemas/FeatureKey' }
-        title: { type: string, example: Ждёт оплаты }
-        scope: { type: string, enum: [service, account] }
-        serviceId: { type: [integer, 'null'], example: 25 }
-        value: { type: number, minimum: 0, maximum: 1, example: 1 }
-        weight: { type: number, example: 45 }
-        points: { type: number, example: 45 }
-        text: { type: string }
+        title: { type: string, description: Название признака, example: Ожидает оплаты }
+        scope: { $ref: '#/components/schemas/FeatureScope' }
+        serviceId: { type: [integer, 'null'], description: 'Услуга, к которой относится признак; null для признаков аккаунта', example: 25 }
+        value: { type: number, minimum: 0, maximum: 1, description: Значение признака 0–1, example: 1 }
+        weight: { type: number, description: Вес признака в баллах (может быть отрицательным), example: 45 }
+        points: { type: number, description: 'Баллы = value × weight, до одного знака', example: 45 }
+        text: { type: string, description: Объяснение для маркетолога, example: 'service-0025: срок ожидания оплаты истёк 395 дн. назад — удаление в любой момент' }
 
     Recommendation:
       type: object
+      description: Что сделать маркетологу. Только для признаков с вкладом ≥ 5 баллов, по убыванию вклада.
       required: [feature, action]
       properties:
         feature: { $ref: '#/components/schemas/FeatureKey' }
-        action: { type: string, example: 'Срочно: письмо или звонок со ссылкой на оплату, предложить отсрочку' }
+        action: { type: string, description: Действие, example: 'Срочно: письмо или звонок со ссылкой на оплату, предложить отсрочку' }
 
     ServiceItem:
       type: object
-      required: [id, name, status, paymentTerm, autoProlong, priceCents, createdAt, expiresAt, daysLeft, mrrCents]
+      description: Услуга клиента в карточке
+      required: [id, name, status, paymentTerm, autoProlong, priceCents, createdAt, expiresAt, daysLeft, riskScore, mrrCents]
       properties:
-        id: { type: integer, example: 25 }
-        name: { type: string, example: service-0025 }
+        id: { type: integer, description: id услуги, example: 25 }
+        name: { type: string, description: Имя услуги, example: service-0025 }
         status: { $ref: '#/components/schemas/ServiceStatus' }
         paymentTerm: { $ref: '#/components/schemas/PaymentTerm' }
-        autoProlong: { type: boolean }
-        priceCents: { type: integer, example: 651 }
-        createdAt: { type: string, format: date-time }
-        expiresAt: { type: string, format: date-time }
-        daysLeft: { type: number, example: -399.9 }
-        riskScore: { type: [integer, 'null'], example: 77 }
-        mrrCents: { type: integer, example: 468720 }
+        autoProlong: { type: boolean, description: Включено ли автопродление, example: true }
+        priceCents: { type: integer, description: 'Цена за один период, центы', example: 651 }
+        createdAt: { type: string, format: date-time, description: Когда создана, example: '2025-09-14T15:00:00.000Z' }
+        expiresAt: { type: string, format: date-time, description: До какого момента оплачена, example: '2025-09-14T16:00:00.000Z' }
+        daysLeft: { type: number, description: 'Дней до expiresAt, отрицательное — уже истекла', example: -399.9 }
+        riskScore: { type: [integer, 'null'], minimum: 0, maximum: 100, description: Оценка риска этой услуги; null для blocked и deleted, example: 77 }
+        mrrCents: { type: integer, description: 'Месячная выручка услуги = price × 30 / дней периода, центы', example: 468720 }
 
     TransactionItem:
       type: object
-      required: [id, serviceId, type, status, amountCents, createdAt]
+      description: Платёж по услуге клиента
+      required: [id, serviceId, type, status, amountCents, createdAt, performedAt]
       properties:
-        id: { type: integer, example: 95 }
-        serviceId: { type: integer, example: 5 }
-        type: { type: string, enum: [order, prolong] }
-        status: { type: string, enum: [performed, not_performed] }
-        amountCents: { type: integer, example: 292 }
-        createdAt: { type: string, format: date-time }
-        performedAt: { type: [string, 'null'], format: date-time }
+        id: { type: integer, description: id транзакции, example: 35 }
+        serviceId: { type: integer, description: Услуга, example: 5 }
+        type: { type: string, enum: [order, prolong], description: 'order — покупка, prolong — продление', example: prolong }
+        status: { type: string, enum: [performed, not_performed], description: Прошёл ли платёж, example: performed }
+        amountCents: { type: integer, description: 'Сумма, центы', example: 519 }
+        createdAt: { type: string, format: date-time, description: Когда создан, example: '2025-09-14T15:05:00.000Z' }
+        performedAt: { type: [string, 'null'], format: date-time, description: 'Когда прошёл; null, если не прошёл', example: '2025-09-14T15:05:39.000Z' }
 
     StatusEvent:
       type: object
-      required: [id, serviceId, accountId, toStatus, occurredAt, source]
+      description: Смена статуса услуги — пишется триггером PostgreSQL
+      required: [id, serviceId, accountId, fromStatus, toStatus, occurredAt, source]
       properties:
-        id: { type: integer }
-        serviceId: { type: integer, example: 1 }
-        accountId: { type: integer, example: 1 }
+        id: { type: integer, description: id события, example: 1 }
+        serviceId: { type: integer, description: Услуга, example: 25 }
+        accountId: { type: integer, description: Владелец услуги, example: 5 }
         fromStatus:
+          description: Статус до изменения; null, если услуга появилась
           oneOf: [{ $ref: '#/components/schemas/ServiceStatus' }, { type: 'null' }]
         toStatus: { $ref: '#/components/schemas/ServiceStatus' }
-        occurredAt: { type: string, format: date-time }
+        occurredAt: { type: string, format: date-time, description: Время изменения по часам источника, example: '2026-10-19T15:10:00.000Z' }
         source: { $ref: '#/components/schemas/EventSource' }
 
     StatusEventList:
       type: object
+      description: Страница ленты событий
       required: [items, total]
       properties:
-        items: { type: array, items: { $ref: '#/components/schemas/StatusEvent' } }
-        total: { type: integer }
+        items: { type: array, description: 'События, новые сверху', items: { $ref: '#/components/schemas/StatusEvent' } }
+        total: { type: integer, description: Событий после фильтра, example: 1 }
 
     CustomerDetail:
       type: object
-      required: [id, email, balanceCents, withdrawBalanceCents, bonusBalanceCents, bonusState, totalReplenishedCents, scoreStatus, money, contributions, recommendations, services, transactions, statusHistory, calcVersion, calculatedAt]
+      description: 'Карточка клиента. Для no_score: contributions и recommendations пустые, money с нулями'
+      required: [id, email, balanceCents, withdrawBalanceCents, bonusBalanceCents, bonusState, totalReplenishedCents, scoreStatus, noScoreReason, riskScore, riskLevel, loyalty, probability, money, riskiestServiceId, contributions, recommendations, services, transactions, statusHistory, calcVersion, calculatedAt]
       properties:
-        id: { type: integer, example: 5 }
-        email: { type: string, example: user-0005@example.test }
-        balanceCents: { type: integer, example: 28657 }
-        withdrawBalanceCents: { type: integer, example: 7623 }
-        bonusBalanceCents: { type: integer, example: 9863 }
-        bonusState: { type: string, enum: [locked, unlocked] }
-        totalReplenishedCents: { type: integer, example: 293608 }
+        id: { type: integer, description: id аккаунта, example: 5 }
+        email: { type: string, description: Email аккаунта, example: user-0005@example.test }
+        balanceCents: { type: integer, description: 'Баланс, центы', example: 28657 }
+        withdrawBalanceCents: { type: integer, description: 'Доступно к выводу, центы', example: 7623 }
+        bonusBalanceCents: { type: integer, description: 'Бонусный баланс, центы', example: 9863 }
+        bonusState: { type: string, enum: [locked, unlocked], description: 'Можно ли платить бонусами: unlocked — да', example: locked }
+        totalReplenishedCents: { type: integer, description: 'Всего пополнено за всё время, центы', example: 293608 }
         scoreStatus: { $ref: '#/components/schemas/ScoreStatus' }
         noScoreReason:
+          description: Почему нет оценки; null, если оценка есть
           oneOf: [{ $ref: '#/components/schemas/NoScoreReason' }, { type: 'null' }]
-        riskScore: { type: [integer, 'null'], example: 77 }
+        riskScore: { type: [integer, 'null'], minimum: 0, maximum: 100, description: Оценка риска 0–100, example: 77 }
         riskLevel:
+          description: Уровень риска; null без оценки
           oneOf: [{ $ref: '#/components/schemas/RiskLevel' }, { type: 'null' }]
-        loyalty: { type: [integer, 'null'], example: 23 }
-        probability: { type: [number, 'null'], example: 0.767 }
+        loyalty: { type: [integer, 'null'], minimum: 0, maximum: 100, description: Лояльность = 100 − riskScore, example: 23 }
+        probability: { type: [number, 'null'], minimum: 0, maximum: 1, description: Вероятность непродления, example: 0.7671 }
         money: { $ref: '#/components/schemas/Money' }
-        riskiestServiceId: { type: [integer, 'null'], example: 25 }
+        riskiestServiceId: { type: [integer, 'null'], description: Услуга с максимальной оценкой — по ней считаются contributions, example: 25 }
         contributions:
           type: array
           description: Все признаки самой рисковой услуги с ненулевыми баллами, по убыванию |points|
           items: { $ref: '#/components/schemas/Contribution' }
-        recommendations: { type: array, items: { $ref: '#/components/schemas/Recommendation' } }
-        services: { type: array, items: { $ref: '#/components/schemas/ServiceItem' } }
-        transactions: { type: array, items: { $ref: '#/components/schemas/TransactionItem' } }
-        statusHistory: { type: array, items: { $ref: '#/components/schemas/StatusEvent' } }
-        calcVersion: { type: integer, example: 17 }
-        calculatedAt: { type: string, format: date-time }
+        recommendations: { type: array, description: Действия маркетологу, items: { $ref: '#/components/schemas/Recommendation' } }
+        services: { type: array, description: 'Все услуги клиента, рисковые сверху', items: { $ref: '#/components/schemas/ServiceItem' } }
+        transactions: { type: array, description: 'Платежи по услугам клиента, новые сверху', items: { $ref: '#/components/schemas/TransactionItem' } }
+        statusHistory: { type: array, description: 'Последние 50 смен статусов услуг клиента, новые сверху', items: { $ref: '#/components/schemas/StatusEvent' } }
+        calcVersion: { type: integer, description: Номер пересчёта, example: 17 }
+        calculatedAt: { type: string, format: date-time, description: Когда выполнен пересчёт, example: '2026-10-19T14:35:54.204Z' }
 
     Summary:
       type: object
+      description: Сводка для экрана «Обзор»
       required: [calcVersion, calculatedAt, referenceTime, clockMode, horizonDays, customers, services, money, topAtRisk]
       properties:
-        calcVersion: { type: integer, example: 17 }
-        calculatedAt: { type: string, format: date-time }
-        referenceTime: { type: string, format: date-time, example: '2026-10-19T14:35:53.000Z' }
-        clockMode: { type: string, enum: [data, real, fixed] }
-        horizonDays: { type: integer, example: 30 }
+        calcVersion: { type: integer, description: Номер пересчёта, example: 17 }
+        calculatedAt: { type: string, format: date-time, description: Когда выполнен пересчёт, example: '2026-10-19T14:35:54.204Z' }
+        referenceTime: { type: string, format: date-time, description: '«Сейчас», от которого считается модель', example: '2026-10-19T14:35:53.000Z' }
+        clockMode: { type: string, enum: [data, real, fixed], description: Откуда взято referenceTime — см. Clock, example: data }
+        horizonDays: { type: integer, description: 'Горизонт расчёта, дней', example: 30 }
         customers:
           type: object
+          description: Клиенты по уровням
           required: [total, high, medium, low, noScore]
           properties:
-            total: { type: integer, example: 10 }
-            high: { type: integer, example: 2 }
-            medium: { type: integer, example: 2 }
-            low: { type: integer, example: 2 }
-            noScore: { type: integer, example: 4 }
+            total: { type: integer, description: Всего клиентов, example: 10 }
+            high: { type: integer, description: Высокий риск, example: 2 }
+            medium: { type: integer, description: Средний риск, example: 2 }
+            low: { type: integer, description: Низкий риск, example: 2 }
+            noScore: { type: integer, description: Без оценки, example: 4 }
         services:
           type: object
+          description: Услуги
           required: [total, live, atRisk, prolongWait]
           properties:
-            total: { type: integer, example: 30 }
-            live: { type: integer, example: 18 }
-            atRisk: { type: integer, example: 9 }
-            prolongWait: { type: integer, example: 6 }
+            total: { type: integer, description: Всего услуг, example: 30 }
+            live: { type: integer, description: 'Живых: active, suspended, prolong_wait', example: 18 }
+            atRisk: { type: integer, description: Живых с оценкой не ниже порога medium, example: 10 }
+            prolongWait: { type: integer, description: Ждут оплаты, example: 6 }
         money:
           type: object
+          description: Деньги за горизонт, центы (`docs/ОБЩЕЕ_ТЗ.md` §5)
           required: [expectedLossCents, worstCaseLossCents, mrrAtRiskCents, totalMrrCents, savableTop20Cents]
           properties:
-            expectedLossCents: { type: integer, example: 703267 }
-            worstCaseLossCents: { type: integer, example: 966052 }
-            mrrAtRiskCents: { type: integer, example: 1155577 }
-            totalMrrCents: { type: integer, example: 1159275 }
-            savableTop20Cents: { type: integer, example: 703267 }
+            expectedLossCents: { type: integer, description: Ожидаемые потери — сумма по всем клиентам, example: 703267 }
+            worstCaseLossCents: { type: integer, description: 'Худший случай — сумма atRisk клиентов high', example: 966052 }
+            mrrAtRiskCents: { type: integer, description: 'MRR клиентов medium и high', example: 1155577 }
+            totalMrrCents: { type: integer, description: MRR всех клиентов с оценкой, example: 1159275 }
+            savableTop20Cents: { type: integer, description: Ожидаемые потери топ-20 клиентов — «можно спасти», example: 703267 }
         topAtRisk:
           type: array
+          description: 10 клиентов с наибольшими ожидаемыми потерями
           maxItems: 10
           items: { $ref: '#/components/schemas/CustomerListItem' }
 
     TimelinePoint:
       type: object
+      description: 'Точка графика за один день. fact — до referenceTime, forecast — после'
       required: [date, kind]
       properties:
-        date: { type: string, format: date, example: '2026-10-20' }
-        kind: { type: string, enum: [fact, forecast] }
-        deletions: { type: integer, description: 'fact: переходы в deleted из status_events' }
-        deletionsEstimated: { type: integer, description: 'fact: оценка по deleted-услугам данных (expiresAt + 5 дн.)' }
-        servicesAtRisk: { type: [integer, 'null'], description: 'fact: из core.risk_daily' }
-        expectedNonRenewals: { type: number, description: 'forecast: Σ вероятностей непродления услуг со сроком в этот день', example: 3.5 }
+        date: { type: string, format: date, description: День (UTC), example: '2026-10-20' }
+        kind: { type: string, enum: [fact, forecast], description: Факт или прогноз, example: forecast }
+        deletions: { type: integer, description: 'fact: переходы в deleted из истории статусов за день', example: 1 }
+        deletionsEstimated: { type: integer, description: 'fact: оценка по deleted-услугам данных без события (expiresAt + 5 дн.)', example: 0 }
+        servicesAtRisk: { type: [integer, 'null'], description: 'fact: услуг под риском в этот день; null, если записи нет', example: 10 }
+        expectedNonRenewals: { type: number, description: 'forecast: сумма вероятностей непродления услуг со сроком в этот день', example: 1.4 }
 
     TimelineResponse:
       type: object
+      description: График оттока
       required: [referenceTime, points]
       properties:
-        referenceTime: { type: string, format: date-time }
-        points: { type: array, items: { $ref: '#/components/schemas/TimelinePoint' } }
+        referenceTime: { type: string, format: date-time, description: Граница факта и прогноза, example: '2026-10-19T14:35:53.000Z' }
+        points: { type: array, description: 'По одной точке на день, по возрастанию даты', items: { $ref: '#/components/schemas/TimelinePoint' } }
 
     FeatureSetting:
       type: object
+      description: Признак модели и его настройка
       required: [key, title, description, scope, weight, defaultWeight, min, max, enabled]
       properties:
         key: { $ref: '#/components/schemas/FeatureKey' }
-        title: { type: string, example: Ждёт оплаты }
-        description: { type: string, example: 'Услуга в статусе prolong_wait: срок истёк, через 5 дней будет удалена.' }
-        scope: { type: string, enum: [service, account] }
-        weight: { type: number, example: 45 }
-        defaultWeight: { type: number, example: 45 }
-        min: { type: number, example: 0 }
-        max: { type: number, example: 100 }
-        enabled: { type: boolean, example: true }
+        title: { type: string, description: Название для UI, example: Ожидает оплаты }
+        description: { type: string, description: 'Что значит признак, 1–2 предложения', example: 'Услуга в статусе prolong_wait: срок истёк, через 5 дней будет удалена.' }
+        scope: { $ref: '#/components/schemas/FeatureScope' }
+        weight: { type: number, description: 'Текущий вес, баллы', example: 45 }
+        defaultWeight: { type: number, description: Вес по умолчанию — к нему возвращает reset, example: 45 }
+        min: { type: number, description: Минимальный вес для ползунка, example: 0 }
+        max: { type: number, description: Максимальный вес для ползунка, example: 100 }
+        enabled: { type: boolean, description: Учитывается ли признак, example: true }
 
     Thresholds:
       type: object
+      description: 'Пороги уровней: score ≥ high → high, ≥ medium → medium, иначе low'
       required: [medium, high]
       properties:
-        medium: { type: integer, minimum: 1, maximum: 99, example: 30 }
-        high: { type: integer, minimum: 2, maximum: 100, example: 60 }
+        medium: { type: integer, minimum: 1, maximum: 99, description: Нижняя граница medium, example: 30 }
+        high: { type: integer, minimum: 2, maximum: 100, description: Нижняя граница high, example: 60 }
 
     Clock:
       type: object
+      description: Откуда модель берёт «сейчас»
       required: [mode]
       properties:
-        mode: { type: string, enum: [data, real, fixed], description: 'data — время источника (source_clock), real — системное, fixed — fixedAt' }
-        fixedAt: { type: [string, 'null'], format: date-time }
+        mode: { type: string, enum: [data, real, fixed], description: 'data — время источника (source_clock), real — системное, fixed — fixedAt', example: data }
+        fixedAt: { type: [string, 'null'], format: date-time, description: 'Дата для режима fixed, иначе null', example: null }
 
     ModelSettings:
       type: object
+      description: Полные настройки модели
       required: [version, updatedAt, horizonDays, thresholds, clock, features]
       properties:
-        version: { type: integer, example: 5 }
-        updatedAt: { type: string, format: date-time }
-        horizonDays: { type: integer, minimum: 1, maximum: 365, example: 30 }
+        version: { type: integer, description: Версия настроек — растёт с каждым изменением, example: 5 }
+        updatedAt: { type: string, format: date-time, description: Когда изменены, example: '2026-10-19T14:40:00.000Z' }
+        horizonDays: { type: integer, minimum: 1, maximum: 365, description: 'Горизонт прогноза, дней', example: 30 }
         thresholds: { $ref: '#/components/schemas/Thresholds' }
         clock: { $ref: '#/components/schemas/Clock' }
-        features: { type: array, items: { $ref: '#/components/schemas/FeatureSetting' } }
+        features: { type: array, description: 'Все признаки из реестра, в стабильном порядке', items: { $ref: '#/components/schemas/FeatureSetting' } }
+      example:
+        version: 5
+        updatedAt: '2026-10-19T14:40:00.000Z'
+        horizonDays: 30
+        thresholds: { medium: 30, high: 60 }
+        clock: { mode: data, fixedAt: null }
+        features:
+          - { key: prolong_wait, title: Ожидает оплаты, description: 'Услуга в статусе prolong_wait: срок истёк, через 5 дней будет удалена.', scope: service, weight: 45, defaultWeight: 45, min: 0, max: 100, enabled: true }
+          - { key: expiring_no_autoprolong, title: Истекает без автопродления, description: 'Срок оплаты скоро закончится или уже прошёл, а автопродление выключено.', scope: service, weight: 30, defaultWeight: 30, min: 0, max: 100, enabled: true }
+          - { key: insufficient_funds, title: Не хватает денег на продление, description: 'Баланса и доступных бонусов не хватит на продления за горизонт.', scope: account, weight: 30, defaultWeight: 30, min: 0, max: 100, enabled: true }
+          - { key: failed_payments, title: Неудачные платежи, description: 'Доля платежей клиента, которые не прошли.', scope: account, weight: 10, defaultWeight: 10, min: 0, max: 50, enabled: true }
+          - { key: churn_history, title: Уже удалял услуги, description: 'Доля удалённых услуг клиента — он уже уходил.', scope: account, weight: 10, defaultWeight: 10, min: 0, max: 50, enabled: true }
+          - { key: suspended, title: Сервер выключен, description: 'Клиент сам выключил сервер — часто это первый шаг к отказу.', scope: service, weight: 8, defaultWeight: 8, min: 0, max: 50, enabled: true }
+          - { key: short_billing, title: Короткий период оплаты, description: 'Почасовая или понедельная оплата — уйти проще.', scope: service, weight: 5, defaultWeight: 5, min: 0, max: 30, enabled: true }
+          - { key: new_client, title: Новый клиент, description: 'Пополнил меньше чем на 3 месяца своих услуг.', scope: account, weight: 7, defaultWeight: 7, min: 0, max: 30, enabled: true }
+          - { key: loyal_payer, title: Стабильно продлевает, description: 'Успешные продления снижают риск — до 5 продлений.', scope: account, weight: -10, defaultWeight: -10, min: -50, max: 0, enabled: true }
 
     ModelSettingsPatch:
       type: object
-      description: Только изменённые поля
+      description: 'Только изменённые поля. Валидация — как у PATCH /model/settings'
       properties:
-        horizonDays: { type: integer, minimum: 1, maximum: 365 }
+        horizonDays: { type: integer, minimum: 1, maximum: 365, description: 'Горизонт прогноза, дней', example: 14 }
         thresholds:
           type: object
+          description: Пороги уровней — можно передать один из двух
           properties:
-            medium: { type: integer, minimum: 1, maximum: 99 }
-            high: { type: integer, minimum: 2, maximum: 100 }
+            medium: { type: integer, minimum: 1, maximum: 99, description: Нижняя граница medium, example: 30 }
+            high: { type: integer, minimum: 2, maximum: 100, description: Нижняя граница high, example: 65 }
         clock: { $ref: '#/components/schemas/Clock' }
         features:
           type: object
-          description: Ключ — FeatureKey
+          description: 'Ключ — FeatureKey, значение — что поменять у признака'
           additionalProperties:
             type: object
+            description: Изменения признака
             properties:
-              weight: { type: number }
-              enabled: { type: boolean }
+              weight: { type: number, description: 'Новый вес в пределах [min, max]', example: 50 }
+              enabled: { type: boolean, description: Включить или выключить признак, example: true }
       example: { horizonDays: 14, thresholds: { high: 65 }, features: { prolong_wait: { weight: 50 } } }
 
-    PreviewSummary:
+    PreviewCounts:
       type: object
+      description: Клиенты по уровням и главные деньги
       required: [customers, money]
       properties:
         customers:
           type: object
+          description: Клиенты по уровням
+          required: [high, medium, low, noScore]
           properties:
-            high: { type: integer }
-            medium: { type: integer }
-            low: { type: integer }
-            noScore: { type: integer }
+            high: { type: integer, description: Высокий риск, example: 3 }
+            medium: { type: integer, description: Средний риск, example: 1 }
+            low: { type: integer, description: Низкий риск, example: 2 }
+            noScore: { type: integer, description: Без оценки, example: 4 }
         money:
           type: object
+          description: Деньги за горизонт, центы
+          required: [expectedLossCents, worstCaseLossCents]
           properties:
-            expectedLossCents: { type: integer }
-            worstCaseLossCents: { type: integer }
+            expectedLossCents: { type: integer, description: Ожидаемые потери, example: 703267 }
+            worstCaseLossCents: { type: integer, description: Худший случай, example: 966052 }
+
+    PreviewCustomer:
+      type: object
+      description: Клиент с оценкой по черновику настроек
+      required: [id, email, riskScore, riskScoreRaw, riskLevel, expectedLossCents, riskiestServiceName, contributions]
+      properties:
+        id: { type: integer, description: id аккаунта, example: 5 }
+        email: { type: string, description: Email аккаунта, example: user-0005@example.test }
+        riskScore: { type: integer, minimum: 0, maximum: 100, description: 'Оценка, округлённая', example: 77 }
+        riskScoreRaw: { type: number, description: Оценка до округления — для точки на шкале, example: 76.7 }
+        riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+        expectedLossCents: { type: integer, description: 'Ожидаемые потери, центы', example: 338372 }
+        riskiestServiceName: { type: string, description: Самая рисковая услуга, example: service-0025 }
+        contributions:
+          type: array
+          description: Баллы признаков самой рисковой услуги — для водопада
+          items:
+            type: object
+            description: Баллы одного признака
+            required: [feature, points]
+            properties:
+              feature: { $ref: '#/components/schemas/FeatureKey' }
+              points: { type: number, description: Баллы, example: 45 }
+
+    PreviewFeature:
+      type: object
+      description: Насколько часто срабатывает признак при черновике
+      required: [key, customersHit, maxPoints]
+      properties:
+        key: { $ref: '#/components/schemas/FeatureKey' }
+        customersHit: { type: integer, description: У скольких клиентов признак дал ненулевые баллы, example: 2 }
+        maxPoints: { type: number, description: Максимальные баллы признака среди клиентов, example: 45 }
 
     PreviewResponse:
       type: object
+      description: 'summary — по черновику, baseline — по сохранённым настройкам, customers — только клиенты с оценкой'
       required: [summary, baseline, customers, features]
       properties:
-        summary: { $ref: '#/components/schemas/PreviewSummary' }
-        baseline: { $ref: '#/components/schemas/PreviewSummary' }
+        summary: { $ref: '#/components/schemas/PreviewCounts' }
+        baseline: { $ref: '#/components/schemas/PreviewCounts' }
+        customers: { type: array, description: Клиенты с оценкой по черновику, items: { $ref: '#/components/schemas/PreviewCustomer' } }
+        features: { type: array, description: 'Для строки «сейчас срабатывает у N клиентов»', items: { $ref: '#/components/schemas/PreviewFeature' } }
+      example:
+        summary: { customers: { high: 3, medium: 1, low: 2, noScore: 4 }, money: { expectedLossCents: 703267, worstCaseLossCents: 966052 } }
+        baseline: { customers: { high: 2, medium: 2, low: 2, noScore: 4 }, money: { expectedLossCents: 703267, worstCaseLossCents: 966052 } }
         customers:
-          type: array
-          items:
-            type: object
-            required: [id, email, riskScore, riskScoreRaw, riskLevel, expectedLossCents, riskiestServiceName, contributions]
-            properties:
-              id: { type: integer, example: 5 }
-              email: { type: string }
-              riskScore: { type: integer, example: 77 }
-              riskScoreRaw: { type: number, example: 76.7 }
-              riskLevel: { $ref: '#/components/schemas/RiskLevel' }
-              expectedLossCents: { type: integer, example: 338372 }
-              riskiestServiceName: { type: string, example: service-0025 }
-              contributions:
-                type: array
-                items:
-                  type: object
-                  required: [feature, points]
-                  properties:
-                    feature: { $ref: '#/components/schemas/FeatureKey' }
-                    points: { type: number }
+          - { id: 5, email: user-0005@example.test, riskScore: 77, riskScoreRaw: 76.7, riskLevel: high, expectedLossCents: 338372, riskiestServiceName: service-0025, contributions: [{ feature: prolong_wait, points: 45 }, { feature: insufficient_funds, points: 28.2 }, { feature: loyal_payer, points: -10 }, { feature: new_client, points: 5.5 }, { feature: short_billing, points: 5 }, { feature: failed_payments, points: 3 }] }
+          - { id: 9, email: user-0009@example.test, riskScore: 66, riskScoreRaw: 65.5, riskLevel: high, expectedLossCents: 343971, riskiestServiceName: service-0009, contributions: [{ feature: expiring_no_autoprolong, points: 30 }, { feature: insufficient_funds, points: 25.5 }, { feature: suspended, points: 8 }, { feature: loyal_payer, points: -8 }, { feature: new_client, points: 6 }, { feature: failed_payments, points: 4 }] }
+          - { id: 10, email: user-0010@example.test, riskScore: 41, riskScoreRaw: 40.5, riskLevel: high, expectedLossCents: 0, riskiestServiceName: service-0020, contributions: [{ feature: prolong_wait, points: 45 }, { feature: loyal_payer, points: -10 }, { feature: failed_payments, points: 3 }, { feature: short_billing, points: 2.5 }] }
         features:
-          type: array
-          items:
-            type: object
-            required: [key, customersHit, maxPoints]
-            properties:
-              key: { $ref: '#/components/schemas/FeatureKey' }
-              customersHit: { type: integer, example: 2 }
-              maxPoints: { type: number, example: 45 }
+          - { key: prolong_wait, customersHit: 2, maxPoints: 45 }
+          - { key: insufficient_funds, customersHit: 2, maxPoints: 28.2 }
 
     SourceAccount:
       type: object
-      description: Формат data.json организаторов
-      required: [id, email, balance, withdrawBalance, totalReplenished, bonusBalance, bonusState]
+      description: Аккаунт в формате data.json организаторов. Необязательные поля получают значения по умолчанию, как в SQL-схеме.
+      required: [id, email]
       properties:
-        id: { type: integer, minimum: 1, example: 5 }
-        email: { type: string, example: user-0005@example.test }
-        balance: { type: integer, minimum: 0, example: 28657 }
-        withdrawBalance: { type: integer, minimum: 0, example: 7623 }
-        totalReplenished: { type: integer, minimum: 0, example: 293608 }
-        bonusBalance: { type: integer, minimum: 0, example: 9863 }
-        bonusState: { type: string, enum: [locked, unlocked] }
+        id: { type: integer, minimum: 1, description: id аккаунта, example: 5 }
+        email: { type: string, description: 'Email, уникальный', example: user-0005@example.test }
+        balance: { type: integer, minimum: 0, default: 0, description: 'Баланс, центы', example: 28657 }
+        withdrawBalance: { type: integer, minimum: 0, default: 0, description: 'Доступно к выводу, центы', example: 7623 }
+        totalReplenished: { type: integer, minimum: 0, default: 0, description: 'Всего пополнено, центы', example: 293608 }
+        bonusBalance: { type: integer, minimum: 0, default: 0, description: 'Бонусный баланс, центы', example: 9863 }
+        bonusState: { type: string, enum: [locked, unlocked], default: locked, description: Можно ли платить бонусами, example: locked }
 
     SourceService:
       type: object
-      required: [id, name, ownerId, paymentTerm, autoProlong, createdAt, expiresAt, status, price]
+      description: Услуга в формате data.json организаторов
+      required: [id, name, ownerId, paymentTerm, createdAt, expiresAt, status, price]
       properties:
-        id: { type: integer, minimum: 1, example: 25 }
-        name: { type: string, pattern: '^[A-Za-z0-9-]+$', example: service-0025 }
-        ownerId: { type: integer, example: 5 }
+        id: { type: integer, minimum: 1, description: id услуги, example: 25 }
+        name: { type: string, pattern: '^[A-Za-z0-9-]+$', description: 'Имя: латиница, цифры, дефис', example: service-0025 }
+        ownerId: { type: integer, minimum: 1, description: id аккаунта-владельца — должен быть в снимке, example: 5 }
         paymentTerm: { $ref: '#/components/schemas/PaymentTerm' }
-        autoProlong: { type: boolean }
-        createdAt: { type: string, format: date-time }
-        expiresAt: { type: string, format: date-time }
+        autoProlong: { type: boolean, default: false, description: Автопродление, example: true }
+        createdAt: { type: string, format: date-time, description: Когда создана, example: '2025-09-14T15:00:00.000Z' }
+        expiresAt: { type: string, format: date-time, description: До какого момента оплачена — не раньше createdAt, example: '2025-09-14T16:00:00.000Z' }
         status: { $ref: '#/components/schemas/ServiceStatus' }
-        price: { type: integer, minimum: 0, example: 651 }
+        price: { type: integer, minimum: 0, description: 'Цена за период, центы', example: 651 }
 
     SourceTransaction:
       type: object
-      required: [id, amount, status, createdAt, type, serviceId]
+      description: 'Транзакция в формате data.json организаторов. performed — performedAt обязателен и не раньше createdAt; not_performed — performedAt = null'
+      required: [id, amount, createdAt, type, serviceId]
       properties:
-        id: { type: integer, minimum: 1, example: 95 }
-        amount: { type: integer, minimum: 0, maximum: 1000, example: 292 }
-        status: { type: string, enum: [performed, not_performed] }
-        performedAt: { type: [string, 'null'], format: date-time }
-        createdAt: { type: string, format: date-time }
-        type: { type: string, enum: [prolong, order] }
-        serviceId: { type: integer, example: 5 }
+        id: { type: integer, minimum: 1, description: id транзакции, example: 35 }
+        amount: { type: integer, minimum: 0, maximum: 1000, description: 'Сумма, центы', example: 519 }
+        status: { type: string, enum: [performed, not_performed], default: not_performed, description: Прошёл ли платёж, example: performed }
+        performedAt: { type: [string, 'null'], format: date-time, default: null, description: Когда прошёл, example: '2025-09-14T15:05:39.000Z' }
+        createdAt: { type: string, format: date-time, description: Когда создан, example: '2025-09-14T15:05:00.000Z' }
+        type: { type: string, enum: [prolong, order], description: 'order — покупка, prolong — продление', example: prolong }
+        serviceId: { type: integer, minimum: 1, description: Услуга — должна быть в снимке, example: 5 }
 
-    Snapshot:
+    SnapshotRequest:
       type: object
+      description: Снимок данных — тот же формат, что data.json организаторов
       required: [accounts, services, transactions]
       properties:
-        accounts: { type: array, items: { $ref: '#/components/schemas/SourceAccount' } }
-        services: { type: array, items: { $ref: '#/components/schemas/SourceService' } }
-        transactions: { type: array, items: { $ref: '#/components/schemas/SourceTransaction' } }
+        accounts: { type: array, description: 'Аккаунты, id и email уникальны', items: { $ref: '#/components/schemas/SourceAccount' } }
+        services: { type: array, description: 'Услуги, id уникальны', items: { $ref: '#/components/schemas/SourceService' } }
+        transactions: { type: array, description: 'Транзакции, id уникальны', items: { $ref: '#/components/schemas/SourceTransaction' } }
 
     SnapshotResponse:
       type: object
+      description: Итог загрузки снимка
       required: [batchId, accounts, services, transactions, statusChanges, removed]
       properties:
-        batchId: { type: integer, example: 12 }
-        accounts: { type: integer, example: 10 }
-        services: { type: integer, example: 30 }
-        transactions: { type: integer, example: 100 }
-        statusChanges: { type: integer, example: 0 }
+        batchId: { type: integer, description: Номер загрузки в ingest_batches, example: 12 }
+        accounts: { type: integer, description: Аккаунтов в снимке, example: 10 }
+        services: { type: integer, description: Услуг в снимке, example: 30 }
+        transactions: { type: integer, description: Транзакций в снимке, example: 100 }
+        statusChanges: { type: integer, description: Сколько услуг сменили статус, example: 3 }
         removed:
           type: object
+          description: Удалено записей, которых не было в снимке
+          required: [accounts, services, transactions]
           properties:
-            accounts: { type: integer, example: 0 }
-            services: { type: integer, example: 0 }
-            transactions: { type: integer, example: 0 }
+            accounts: { type: integer, description: Аккаунтов, example: 0 }
+            services: { type: integer, description: Услуг, example: 1 }
+            transactions: { type: integer, description: Транзакций, example: 4 }
 
     SourceEvent:
       type: object
+      description: Одно точечное изменение
       required: [entity, op, data]
       properties:
-        entity: { type: string, enum: [account, service, transaction] }
-        op: { type: string, enum: [upsert, delete] }
+        entity: { type: string, enum: [account, service, transaction], description: Что меняем, example: service }
+        op: { type: string, enum: [upsert, delete], description: 'upsert — создать или обновить, delete — удалить', example: upsert }
         data:
           type: object
-          description: Поля в формате data.json; для upsert существующей записи — только изменённые поля + id
+          description: Поля в формате data.json; для upsert существующей записи — id и только изменённые поля, для delete — только id
           additionalProperties: true
-          example: { id: 5, balance: 15000 }
+          example: { id: 25, status: active, expiresAt: '2026-10-19T16:00:00.000Z' }
 
     EventsRequest:
       type: object
+      description: Пачка точечных изменений
       required: [events]
       properties:
-        at: { type: string, format: date-time, description: Время события источника; двигает source_clock вперёд }
-        events: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SourceEvent' } }
+        at: { type: string, format: date-time, description: Время событий по часам источника; двигает source_clock вперёд, example: '2026-10-19T15:05:00.000Z' }
+        events: { type: array, minItems: 1, description: Изменения — применяются по порядку, items: { $ref: '#/components/schemas/SourceEvent' } }
+      example:
+        at: '2026-10-19T15:05:00.000Z'
+        events:
+          - { entity: account, op: upsert, data: { id: 5, balance: 500000 } }
+          - { entity: service, op: upsert, data: { id: 25, status: active, expiresAt: '2026-10-19T16:05:00.000Z' } }
+          - { entity: transaction, op: upsert, data: { id: 101, amount: 651, status: performed, performedAt: '2026-10-19T15:05:00.000Z', createdAt: '2026-10-19T15:04:00.000Z', type: prolong, serviceId: 25 } }
 
     EventsResponse:
       type: object
+      description: Итог применения событий
       required: [applied, statusChanges]
       properties:
-        applied: { type: integer, example: 3 }
-        statusChanges: { type: integer, example: 1 }
+        applied: { type: integer, description: Применено событий, example: 3 }
+        statusChanges: { type: integer, description: Сколько услуг сменили статус, example: 1 }
 
     SimulatorState:
       type: object
+      description: Состояние симулятора
       required: [running, intervalSeconds, tickHours, eventsGenerated, dataTime]
       properties:
-        running: { type: boolean, example: false }
-        intervalSeconds: { type: integer, example: 3 }
-        tickHours: { type: number, example: 6 }
-        eventsGenerated: { type: integer, example: 0 }
-        dataTime: { type: string, format: date-time, example: '2026-10-19T14:35:53.000Z' }
+        running: { type: boolean, description: Работает ли сейчас, example: false }
+        intervalSeconds: { type: integer, description: Реальных секунд между шагами, example: 3 }
+        tickHours: { type: number, description: На сколько часов шаг двигает время источника, example: 6 }
+        eventsGenerated: { type: integer, description: Событий создано с запуска, example: 0 }
+        dataTime: { type: string, format: date-time, description: Текущее время источника (source_clock), example: '2026-10-19T14:35:53.000Z' }
 
     SimulatorAction:
       type: object
+      description: Управление симулятором
       required: [action]
       properties:
-        action: { type: string, enum: [start, stop, tick] }
-        intervalSeconds: { type: integer, minimum: 1, maximum: 60 }
-        tickHours: { type: number, minimum: 0.25, maximum: 168 }
+        action: { type: string, enum: [start, stop, tick], description: 'start — запустить, stop — остановить, tick — сделать один шаг', example: start }
+        intervalSeconds: { type: integer, minimum: 1, maximum: 60, description: 'Новый интервал между шагами, секунд', example: 3 }
+        tickHours: { type: number, minimum: 0.25, maximum: 168, description: 'Новый размер шага, часов', example: 6 }
+
+    RecalculatedEvent:
+      type: object
+      description: Данные SSE-события recalculated
+      required: [calcVersion, calculatedAt, reason]
+      properties:
+        calcVersion: { type: integer, description: Новый номер пересчёта, example: 18 }
+        calculatedAt: { type: string, format: date-time, description: Когда выполнен, example: '2026-10-19T14:36:05.100Z' }
+        reason: { type: string, enum: [data, settings, timer, startup], description: 'Что вызвало: data — изменились данные, settings — настройки, timer — таймер, startup — запуск', example: settings }
