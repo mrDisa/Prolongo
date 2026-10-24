@@ -28,6 +28,9 @@ TX_STATUSES = [("not_performed", "not_performed"), ("performed", "performed")]
 
 TX_TYPES = [("prolong", "prolong"), ("order", "order")]
 
+# Who changed the data: status_events.source
+EVENT_SOURCES = ["seed", "snapshot", "event", "admin", "simulator", "sql", "demo_backfill"]
+
 # Same rules as the CHECK constraints of 001_schema.up.sql, so admin forms show errors instead of a 500.
 NON_NEGATIVE = [MinValueValidator(0)]
 SERVICE_NAME = [RegexValidator(r"^[A-Za-z0-9-]+\Z", "Допустимы только латинские буквы, цифры и дефис")]

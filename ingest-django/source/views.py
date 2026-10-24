@@ -2,19 +2,19 @@ import json
 from datetime import timezone
 
 from django.conf import settings
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_serializer
 from rest_framework import serializers
 from rest_framework.exceptions import ParseError
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import schema
 from .exceptions import BadRequest
-from .models import SimulatorState, StatusEvent
+from .models import EVENT_SOURCES, SimulatorState, StatusEvent
 from .services.events import apply_events
 from .services.simulator import current_data_time, get_state, run_tick
 from .services.snapshot import apply_snapshot
-
-EVENT_SOURCES = ["seed", "snapshot", "event", "admin", "simulator", "sql", "demo_backfill"]
 
 
 def iso_z(value):
@@ -27,6 +27,18 @@ class SnapshotView(APIView):
 
     parser_classes = [JSONParser, MultiPartParser]
 
+    @extend_schema(
+        operation_id="putSnapshot",
+        tags=["source"],
+        summary="Загрузка или полная замена снимка данных",
+        request={"application/json": schema.SnapshotRequestSchema, "multipart/form-data": schema.SnapshotUploadSchema},
+        responses={
+            200: OpenApiResponse(schema.SnapshotResponseSchema, description="Снимок применён"),
+            400: schema.error("Нет поля file, файл не JSON или больше 20 МБ"),
+            401: schema.UNAUTHORIZED,
+            422: schema.VALIDATION,
+        },
+    )
     def put(self, request):
         if request.content_type.startswith("multipart/form-data"):
             upload = request.FILES.get("file")
@@ -44,6 +56,7 @@ class SnapshotView(APIView):
         return Response(apply_snapshot(payload, source="snapshot"))
 
 
+@extend_schema_serializer(component_name="EventsQuery")
 class EventsQueryDTO(serializers.Serializer):
     accountId = serializers.IntegerField(required=False, min_value=1)
     serviceId = serializers.IntegerField(required=False, min_value=1)
@@ -59,6 +72,17 @@ class EventsView(APIView):
 
     parser_classes = [JSONParser]
 
+    @extend_schema(
+        operation_id="listSourceEvents",
+        tags=["source"],
+        summary="Лента смен статусов услуг",
+        parameters=[EventsQueryDTO],
+        responses={
+            200: OpenApiResponse(schema.StatusEventListSchema, description="События, новые сверху"),
+            400: schema.BAD_REQUEST,
+            401: schema.UNAUTHORIZED,
+        },
+    )
     def get(self, request):
         query = EventsQueryDTO(data=request.query_params)
         if not query.is_valid():
@@ -90,10 +114,23 @@ class EventsView(APIView):
         ]
         return Response({"items": items, "total": total})
 
+    @extend_schema(
+        operation_id="postSourceEvents",
+        tags=["source"],
+        summary="Точечные изменения данных",
+        request=schema.EventsRequestSchema,
+        responses={
+            200: OpenApiResponse(schema.EventsResponseSchema, description="Все события применены в одной транзакции"),
+            400: schema.error("Тело не JSON"),
+            401: schema.UNAUTHORIZED,
+            422: schema.VALIDATION,
+        },
+    )
     def post(self, request):
         return Response(apply_events(request.data))
 
 
+@extend_schema_serializer(component_name="SimulatorAction")
 class SimulatorActionDTO(serializers.Serializer):
     action = serializers.ChoiceField(
         ["start", "stop", "tick"], error_messages={"invalid_choice": "Недопустимое значение: {input}"}
@@ -117,9 +154,27 @@ class SimulatorView(APIView):
 
     parser_classes = [JSONParser]
 
+    @extend_schema(
+        operation_id="getSimulator",
+        tags=["source"],
+        summary="Состояние симулятора",
+        responses={200: OpenApiResponse(schema.SimulatorStateSchema, description="Текущее состояние"), 401: schema.UNAUTHORIZED},
+    )
     def get(self, request):
         return Response(simulator_payload(get_state()))
 
+    @extend_schema(
+        operation_id="controlSimulator",
+        tags=["source"],
+        summary="Запуск, остановка или один шаг симулятора",
+        request=SimulatorActionDTO,
+        responses={
+            200: OpenApiResponse(schema.SimulatorStateSchema, description="Состояние после действия"),
+            400: schema.error("Тело не JSON"),
+            401: schema.UNAUTHORIZED,
+            422: schema.VALIDATION,
+        },
+    )
     def post(self, request):
         command = SimulatorActionDTO(data=request.data)
         command.is_valid(raise_exception=True)

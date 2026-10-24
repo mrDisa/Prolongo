@@ -8,6 +8,16 @@ export function formatEUR(cents: number): string {
   return `€${euroFormatter.format(cents / 100)}`;
 }
 
+export function formatHorizonEnd(referenceTime: string, days: number, includeYear = false): string {
+  const date = new Date(new Date(referenceTime).getTime() + days * 24 * 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    ...(includeYear ? { year: 'numeric' as const } : {}),
+  }).formatToParts(date).reduce<Record<string, string>>((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `до ${parts.day} ${parts.month.replace(/\.$/, '')}${includeYear ? ` ${parts.year}` : ''}`;
+}
+
 const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
   month: 'short',
