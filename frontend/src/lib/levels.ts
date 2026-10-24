@@ -20,7 +20,7 @@ export function isRiskLevel(value: string | null): value is RiskLevel {
   return value === 'high' || value === 'medium' || value === 'low' || value === 'none';
 }
 
-export function levelLabel(customer: Customer): string {
+export function levelLabel(customer: Pick<Customer, 'scoreStatus' | 'riskLevel'>): string {
   if (customer.scoreStatus === 'no_score') return 'Нет оценки';
   if (customer.riskLevel === 'high') return 'Высокий';
   if (customer.riskLevel === 'medium') return 'Средний';
