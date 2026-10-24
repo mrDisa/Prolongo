@@ -3,8 +3,9 @@ import { formatDate, formatEUR } from '@/lib/format';
 
 type Transaction = components['schemas']['TransactionItem'];
 
-export function PaymentStrip({ transactions }: { transactions: Transaction[] }) {
+export function PaymentStrip({ transactions, loyalPoints }: { transactions: Transaction[]; loyalPoints: number }) {
   const renewals = transactions.filter((transaction) => transaction.type === 'prolong' && transaction.status === 'performed').length;
+  const paid = transactions.filter((transaction) => transaction.status === 'performed').length;
   const failed = transactions.filter((transaction) => transaction.status === 'not_performed').length;
   const ariaLabel = `Платежи: ${transactions.length} всего, ${transactions.length - failed} успешных, ${failed} не прошли`;
 
@@ -21,7 +22,20 @@ export function PaymentStrip({ transactions }: { transactions: Transaction[] }) 
           ))}
         </div>
       ) : <p className="text-[14px] text-ink-2">Платежей пока нет</p>}
-      <p className="mt-3 text-[14px] text-ink-2">Успешных продлений: <strong className="text-ink">{renewals}</strong></p>
+      {transactions.length ? (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-[13px] text-ink-2" aria-label="Обозначения платежей">
+          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-low" aria-hidden="true" />Прошли · {paid}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-high" aria-hidden="true" />Не оплачены · {failed}</span>
+        </div>
+      ) : null}
+      <p className="mt-3 text-[14px] leading-5 text-ink-2">
+        Успешных продлений: <strong className="text-ink">{renewals}</strong>
+        {renewals === 0
+          ? ' — стабильные продления пока не снижают риск.'
+          : loyalPoints < 0
+            ? ` — признак «Стабильно продлевает» снижает риск (${loyalPoints} в лесенке баллов).`
+            : ''}
+      </p>
     </div>
   );
 }
