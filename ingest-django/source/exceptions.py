@@ -24,6 +24,14 @@ class ValidationFailed(Exception):
         self.details = details
 
 
+class BadRequest(exceptions.APIException):
+    """Invalid query parameters: 400 bad_request with a readable message."""
+
+    status_code = 400
+    default_code = "bad_request"
+    default_detail = "Неверные параметры запроса"
+
+
 def error_body(code, message, details=None):
     error = {"code": code, "message": message}
     if details is not None:
