@@ -296,7 +296,7 @@ export default function Model() {
               <NumberField label="Высокий риск от" value={draft.thresholds.high} min={1} max={100} onChange={(high) => setDraft((current) => current ? { ...current, thresholds: { ...current.thresholds, high } } : current)} />
             </div>
             <label className="mt-4 block text-[13px] font-medium text-ink-2" htmlFor="model-horizon">Горизонт прогноза</label>
-            <select id="model-horizon" value={draft.horizonDays} onChange={(event) => setDraft((current) => current ? { ...current, horizonDays: Number(event.target.value) } : current)} className="mt-2 h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-[14px] text-ink outline-none focus:border-accent">
+            <select id="model-horizon" value={draft.horizonDays} onChange={(event) => setDraft((current) => current ? { ...current, horizonDays: Number(event.target.value) } : current)} className="mt-2 h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-[14px] text-ink focus:border-accent">
               {[...new Set([...HORIZONS, draft.horizonDays])].sort((a, b) => a - b).map((days) => <option key={days} value={days}>{days} дней</option>)}
             </select>
           </section>
@@ -355,13 +355,13 @@ function NumberField({ label, value, min, max, onChange }: { label: string; valu
   return (
     <label className="block text-[13px] font-medium text-ink-2">
       {label}
-      <input type="number" min={min} max={max} step={1} value={Number.isFinite(value) ? value : ''} onChange={(event) => onChange(event.target.value === '' ? Number.NaN : Number(event.target.value))} className="mt-2 h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-[15px] font-semibold text-ink outline-none focus:border-accent" />
+      <input type="number" min={min} max={max} step={1} value={Number.isFinite(value) ? value : ''} onChange={(event) => onChange(event.target.value === '' ? Number.NaN : Number(event.target.value))} className="mt-2 h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-[15px] font-semibold text-ink focus:border-accent" />
     </label>
   );
 }
 
 function ModelSkeleton() {
-  return <div className="space-y-6" aria-label="Загрузка модели" role="status"><div className="h-28 animate-pulse rounded-block bg-surface" /><div className="grid gap-6 xl:grid-cols-2"><div className="h-[600px] animate-pulse rounded-block bg-surface" /><div className="h-[600px] animate-pulse rounded-block bg-surface" /></div><span className="sr-only">Загружаем настройки модели</span></div>;
+  return <div className="space-y-6" aria-label="Загрузка модели" role="status"><div className="h-28 animate-pulse rounded-block bg-surface" /><div className="grid gap-6 xl:grid-cols-2"><div className="h-[420px] animate-pulse rounded-block bg-surface sm:h-[600px]" /><div className="h-[420px] animate-pulse rounded-block bg-surface sm:h-[600px]" /></div><span className="sr-only">Загружаем настройки модели</span></div>;
 }
 
 function ModelPreviewSkeleton() {

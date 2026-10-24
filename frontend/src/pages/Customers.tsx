@@ -119,7 +119,7 @@ export default function Customers() {
         title="Клиенты"
         subtitle="Рейтинг риска оттока. Нажмите на заголовок колонки, чтобы отсортировать"
         actions={
-          <label className="flex h-[46px] w-full items-center gap-3 rounded-field border border-line-strong bg-surface px-4 text-ink-2 sm:w-[320px]">
+          <label className="flex h-[46px] w-full items-center gap-3 rounded-field border border-line-strong bg-surface px-4 text-ink-2 focus-within:border-accent focus-within:outline focus-within:outline-2 focus-within:outline-accent sm:w-[320px]">
             <Search size={18} aria-hidden="true" />
             <span className="sr-only">Поиск по email или ID</span>
             <input
@@ -127,7 +127,7 @@ export default function Customers() {
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="Поиск по email или ID"
-              className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-3"
+              className="min-w-0 flex-1 bg-transparent text-[15px] text-ink focus-visible:outline-none placeholder:text-ink-3"
             />
           </label>
         }
@@ -141,7 +141,9 @@ export default function Customers() {
 
       {customersQuery.isError ? (
         <ErrorState message={customersQuery.error instanceof Error ? customersQuery.error.message : undefined} onRetry={() => customersQuery.refetch()} />
-      ) : <section className="overflow-hidden rounded-block bg-surface" aria-label="Рейтинг клиентов">
+      ) : <section className="overflow-hidden rounded-block bg-surface" aria-label="Рейтинг клиентов" aria-busy={customersQuery.isPending}>
+        {customersQuery.isPending ? <span role="status" className="sr-only">Загружаем список клиентов</span> : null}
+        <p className="px-4 pt-3 text-[12px] text-ink-3 sm:hidden">Таблицу можно прокручивать по горизонтали.</p>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] border-collapse text-[14px]">
             <thead className="border-b border-line bg-surface-2 text-ink-2">
