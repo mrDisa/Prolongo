@@ -21,8 +21,8 @@ export function InsightHero({ summary }: { summary: Summary }) {
   return (
     <section className="grid gap-7 rounded-hero bg-surface p-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:p-8" aria-label="Ожидаемые потери и главная рекомендация">
       <div className="min-w-0">
-        <p className="inline-flex rounded-full bg-accent-soft px-3 py-1 text-[13px] font-semibold text-accent-text">Ожидаемые потери · {summary.horizonDays} дн.</p>
-        <p className={`mt-4 inline-block rounded px-1 font-display text-[clamp(38px,6vw,58px)] font-semibold leading-tight tracking-[-0.04em] transition-colors duration-300 ${expectedLossChanged ? 'bg-accent-soft' : 'bg-transparent'}`}>{formatEUR(expectedLossCents)}</p>
+        <p className="flex w-fit rounded-full bg-accent-soft px-3 py-1 text-[13px] font-semibold text-accent-text">Ожидаемые потери · {summary.horizonDays} дн.</p>
+        <p className={`mt-4 block w-fit rounded px-1 font-display text-[clamp(38px,6vw,58px)] font-semibold leading-tight tracking-[-0.04em] transition-colors duration-300 ${expectedLossChanged ? 'bg-accent-soft' : 'bg-transparent'}`}>{formatEUR(expectedLossCents)}</p>
         <p className="mt-3 max-w-3xl text-[15px] leading-6 text-ink-2">{insight}</p>
         <div className="mt-5 flex flex-wrap gap-3">
           {first ? (
