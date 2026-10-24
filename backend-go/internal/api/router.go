@@ -2,13 +2,16 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/mrDisa/Prolongo/backend-go/internal/auth"
+	"github.com/mrDisa/Prolongo/backend-go/internal/recalc"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 )
 
@@ -17,21 +20,28 @@ type Deps struct {
 	Logger      *slog.Logger
 	Auth        *auth.Service
 	Settings    *settings.Service
+	Recalc      Refresher // nil in tests that do not need recalculation
 	Cookie      CookieConfig
 	OIDCEnabled bool
+}
+
+// Refresher recalculates the model and waits for the result (*recalc.Worker).
+type Refresher interface {
+	Refresh(ctx context.Context, reason string, timeout time.Duration) (*recalc.Snapshot, error)
 }
 
 type handlers struct {
 	logger      *slog.Logger
 	auth        *auth.Service
 	settings    *settings.Service
+	recalc      Refresher
 	cookie      CookieConfig
 	oidcEnabled bool
 }
 
 // NewRouter builds the HTTP handler with common middleware and all routes.
 func NewRouter(d Deps) http.Handler {
-	h := &handlers{logger: d.Logger, auth: d.Auth, settings: d.Settings, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled}
+	h := &handlers{logger: d.Logger, auth: d.Auth, settings: d.Settings, recalc: d.Recalc, cookie: d.Cookie, oidcEnabled: d.OIDCEnabled}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

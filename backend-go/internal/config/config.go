@@ -55,6 +55,12 @@ func parse(opts env.Options) (Config, error) {
 	if _, err := cfg.SlogLevel(); err != nil {
 		return Config{}, err
 	}
+	if cfg.RecalcIntervalSeconds < 1 {
+		return Config{}, fmt.Errorf("config: RECALC_INTERVAL_SECONDS must be at least 1, got %d", cfg.RecalcIntervalSeconds)
+	}
+	if cfg.RecalcDebounceMS < 0 {
+		return Config{}, fmt.Errorf("config: RECALC_DEBOUNCE_MS must not be negative, got %d", cfg.RecalcDebounceMS)
+	}
 	return cfg, nil
 }
 

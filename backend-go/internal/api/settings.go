@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrDisa/Prolongo/backend-go/internal/engine"
 	"github.com/mrDisa/Prolongo/backend-go/internal/features"
+	"github.com/mrDisa/Prolongo/backend-go/internal/recalc"
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 )
 
@@ -104,7 +105,22 @@ func (h *handlers) writeSettingsResult(w http.ResponseWriter, r *http.Request, r
 		writeInternal(w, r, h.logger, err)
 	default:
 		h.logger.InfoContext(r.Context(), "model settings changed", "version", rec.Version)
+		h.refresh(r)
 		writeJSON(w, http.StatusOK, toSettingsJSON(rec))
+	}
+}
+
+// refreshTimeout: the settings response waits for the recalculation at most this long
+// (docs/ТЗ_BACKEND_GO.md §10), so the next GET already shows the new numbers.
+const refreshTimeout = 2 * time.Second
+
+func (h *handlers) refresh(r *http.Request) {
+	if h.recalc == nil {
+		return
+	}
+	if _, err := h.recalc.Refresh(r.Context(), recalc.ReasonSettings, refreshTimeout); err != nil {
+		// The settings are saved; the new numbers will arrive with the next calculation.
+		h.logger.WarnContext(r.Context(), "settings saved, recalculation still pending", "error", err)
 	}
 }
 

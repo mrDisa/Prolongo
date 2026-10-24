@@ -65,4 +65,10 @@ func TestBadValues(t *testing.T) {
 
 	_, err = load(t, map[string]string{"DATABASE_URL": "x", "SESSION_TTL_HOURS": "twelve"})
 	assert.ErrorContains(t, err, "SESSION_TTL_HOURS")
+
+	_, err = load(t, map[string]string{"DATABASE_URL": "x", "RECALC_INTERVAL_SECONDS": "0"})
+	assert.ErrorContains(t, err, "RECALC_INTERVAL_SECONDS", "time.NewTicker panics on 0")
+
+	_, err = load(t, map[string]string{"DATABASE_URL": "x", "RECALC_DEBOUNCE_MS": "-5"})
+	assert.ErrorContains(t, err, "RECALC_DEBOUNCE_MS")
 }
