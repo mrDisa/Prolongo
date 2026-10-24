@@ -4,6 +4,7 @@ nginx overwrites a client-supplied X-Auth-User, and port 8001 is not published,
 so the header can be trusted.
 """
 
+from django.contrib.auth.backends import RemoteUserBackend
 from rest_framework.authentication import BaseAuthentication
 
 
@@ -30,3 +31,13 @@ class HeaderUserAuthentication(BaseAuthentication):
     def authenticate_header(self, request):
         # Any non-empty value makes DRF answer 401 instead of 403.
         return "Session"
+
+
+class AdminRemoteUserBackend(RemoteUserBackend):
+    """Django admin users are created on first visit; everyone allowed into the panel manages the data."""
+
+    def configure_user(self, request, user, created=True):
+        if not (user.is_staff and user.is_superuser):
+            user.is_staff = user.is_superuser = True
+            user.save(update_fields=["is_staff", "is_superuser"])
+        return user
