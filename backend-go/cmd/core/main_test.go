@@ -11,8 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/mrDisa/Prolongo/backend-go/internal/config"
 )
 
 func TestHealthURL(t *testing.T) {
@@ -38,14 +36,14 @@ func freeAddr(t *testing.T) string {
 
 // The server answers /healthz, the -healthcheck probe agrees, and cancelling
 // the context stops the server cleanly.
-func TestRunServesAndShutsDown(t *testing.T) {
+func TestServeAndShutDown(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := config.Config{HTTPAddr: addr}
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- run(ctx, cfg, logger) }()
+	go func() { done <- serve(ctx, addr, handler, logger) }()
 
 	require.Eventually(t, func() bool {
 		resp, err := http.Get("http://" + addr + "/healthz")

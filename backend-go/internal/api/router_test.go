@@ -12,14 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestRouter(level slog.Level) (http.Handler, *bytes.Buffer) {
+func newTestRouter(t *testing.T, level slog.Level) (http.Handler, *bytes.Buffer) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: level}))
-	return NewRouter(logger), &buf
+	return NewRouter(testDeps(t, logger)), &buf
 }
 
 func TestHealthz(t *testing.T) {
-	h, _ := newTestRouter(slog.LevelInfo)
+	h, _ := newTestRouter(t, slog.LevelInfo)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
@@ -29,14 +29,23 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestUnknownRouteIs404(t *testing.T) {
-	h, _ := newTestRouter(slog.LevelInfo)
+	h, _ := newTestRouter(t, slog.LevelInfo)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nope", nil))
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.JSONEq(t, `{"error":{"code":"not_found","message":"Маршрут не найден"}}`, rec.Body.String())
+}
+
+func TestWrongMethodIs405(t *testing.T) {
+	h, _ := newTestRouter(t, slog.LevelInfo)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/auth/login", nil))
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	assert.JSONEq(t, `{"error":{"code":"method_not_allowed","message":"Метод не поддерживается"}}`, rec.Body.String())
 }
 
 func TestRequestLog(t *testing.T) {
-	h, buf := newTestRouter(slog.LevelInfo)
+	h, buf := newTestRouter(t, slog.LevelInfo)
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/nope", nil))
 
 	var line map[string]any
@@ -50,7 +59,7 @@ func TestRequestLog(t *testing.T) {
 }
 
 func TestHealthzNotLoggedAtInfo(t *testing.T) {
-	h, buf := newTestRouter(slog.LevelInfo)
+	h, buf := newTestRouter(t, slog.LevelInfo)
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	assert.Empty(t, buf.String())
 }

@@ -15,7 +15,10 @@ import (
 	"time"
 
 	"github.com/mrDisa/Prolongo/backend-go/internal/api"
+	"github.com/mrDisa/Prolongo/backend-go/internal/auth"
 	"github.com/mrDisa/Prolongo/backend-go/internal/config"
+	"github.com/mrDisa/Prolongo/backend-go/internal/db"
+	"github.com/mrDisa/Prolongo/backend-go/internal/store"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -45,11 +48,55 @@ func main() {
 	}
 }
 
-// run serves HTTP until ctx is cancelled, then lets running requests finish.
+// Startup timings from docs/ТЗ_BACKEND_GO.md §5 and §13.
+const (
+	dbConnectTimeout  = 60 * time.Second
+	sourceWaitTimeout = 60 * time.Second
+	sessionCleanup    = time.Hour
+)
+
+// run prepares the database and serves HTTP until ctx is cancelled.
+// Order: PostgreSQL → Django's source schema → core migrations → admin user → HTTP.
 func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	connectCtx, cancel := context.WithTimeout(ctx, dbConnectTimeout)
+	pool, err := db.Open(connectCtx, cfg.DatabaseURL, logger)
+	cancel()
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	if err := db.WaitForSource(ctx, pool, sourceWaitTimeout, logger); err != nil {
+		return err
+	}
+	if err := db.Migrate(ctx, pool, logger); err != nil {
+		return err
+	}
+
+	authSvc, err := auth.NewService(store.New(pool), time.Duration(cfg.SessionTTLHours)*time.Hour)
+	if err != nil {
+		return err
+	}
+	if err := authSvc.EnsureAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword); err != nil {
+		return err
+	}
+	logger.Info("admin user ready", slog.String("username", cfg.AdminUsername))
+	go authSvc.CleanupLoop(ctx, sessionCleanup, logger)
+
+	handler := api.NewRouter(api.Deps{
+		Logger:      logger,
+		Auth:        authSvc,
+		Cookie:      api.CookieConfig{Name: cfg.SessionCookieName, Secure: cfg.CookieSecure},
+		OIDCEnabled: cfg.OIDC.Enabled,
+	})
+	return serve(ctx, cfg.HTTPAddr, handler, logger)
+}
+
+// serve runs the HTTP server until ctx is cancelled, then lets running requests finish.
+func serve(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
 	srv := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           api.NewRouter(logger),
+		Addr:              addr,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		// No WriteTimeout: the SSE stream (G9) keeps responses open for hours.
@@ -57,7 +104,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("core listening", slog.String("addr", cfg.HTTPAddr))
+		logger.Info("core listening", slog.String("addr", addr))
 		errCh <- srv.ListenAndServe()
 	}()
 

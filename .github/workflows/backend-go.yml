@@ -1,0 +1,53 @@
+name: backend-go
+
+# Go checks for every pull request: gofmt, go vet and all tests,
+# including the PostgreSQL integration tests (TEST_DATABASE_URL).
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-go
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: prolongo_test
+          POSTGRES_USER: prolongo
+          POSTGRES_PASSWORD: prolongo
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U prolongo -d prolongo_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://prolongo:prolongo@localhost:5432/prolongo_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::Файлы не отформатированы, выполните gofmt -w: $unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race -count=1 ./...
