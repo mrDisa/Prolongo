@@ -1,30 +1,29 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { LiveStatus } from '@/components/LiveDot';
 
 interface LiveUpdatesState {
   status: LiveStatus;
-  updatedAt: number;
-  recentlyUpdated: boolean;
+  calculatedAt: string | null;
+  calculationRevision: number;
 }
 
 const LiveUpdatesContext = createContext<LiveUpdatesState>({
   status: 'idle',
-  updatedAt: 0,
-  recentlyUpdated: false,
+  calculatedAt: null,
+  calculationRevision: 0,
 });
 
 const QUIET_TIMEOUT_MS = 20_000;
 const FALLBACK_POLL_MS = 10_000;
 const INVALIDATION_INTERVAL_MS = 1_000;
-const HIGHLIGHT_DURATION_MS = 1_200;
+const CLOSED_RETRY_MS = 5_000;
 
 export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<LiveStatus>('reconnecting');
-  const [updatedAt, setUpdatedAt] = useState(0);
-  const [recentlyUpdated, setRecentlyUpdated] = useState(false);
-  const pulseTimer = useRef<number | null>(null);
+  const [status, setStatus] = useState<LiveStatus>('idle');
+  const [calculatedAt, setCalculatedAt] = useState<string | null>(null);
+  const [calculationRevision, setCalculationRevision] = useState(0);
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -33,18 +32,8 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
     let lastInvalidationAt = 0;
     let invalidationTimer: number | null = null;
     let fallbackTimer: number | null = null;
+    let reconnectTimer: number | null = null;
     let disposed = false;
-
-    const markUpdated = () => {
-      const now = Date.now();
-      setUpdatedAt(now);
-      setRecentlyUpdated(true);
-      if (pulseTimer.current !== null) window.clearTimeout(pulseTimer.current);
-      pulseTimer.current = window.setTimeout(() => {
-        pulseTimer.current = null;
-        setRecentlyUpdated(false);
-      }, HIGHLIGHT_DURATION_MS);
-    };
 
     const clearFallback = () => {
       if (fallbackTimer !== null) window.clearInterval(fallbackTimer);
@@ -53,7 +42,9 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
 
     const invalidateQueries = () => {
       lastInvalidationAt = Date.now();
-      void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'me' }).then(markUpdated);
+      void queryClient.invalidateQueries({ predicate: (query) => !['me', 'settings', 'model-settings'].includes(String(query.queryKey[0])) }).then(() => {
+        if (!disposed) setCalculationRevision((revision) => revision + 1);
+      });
     };
 
     const scheduleInvalidation = () => {
@@ -74,8 +65,14 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       setStatus('live');
       clearFallback();
       try {
-        const payload = JSON.parse(event.data) as { calcVersion?: number };
-        if (typeof payload.calcVersion !== 'number' || payload.calcVersion === lastVersion) return;
+        const payload = JSON.parse(event.data) as { calcVersion?: number; calculatedAt?: string };
+        if (typeof payload.calculatedAt === 'string') setCalculatedAt(payload.calculatedAt);
+        if (typeof payload.calcVersion !== 'number') return;
+        if (lastVersion === null) {
+          lastVersion = payload.calcVersion;
+          return;
+        }
+        if (payload.calcVersion === lastVersion) return;
         lastVersion = payload.calcVersion;
         scheduleInvalidation();
       } catch {
@@ -86,39 +83,54 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
     const fakeLive = import.meta.env.DEV && import.meta.env.VITE_FAKE_LIVE === '1';
     if (fakeLive) {
       let version = 0;
-      setStatus('live');
+      receiveRecalculated({ data: JSON.stringify({ calcVersion: version, calculatedAt: new Date().toISOString() }) } as MessageEvent<string>);
       const timer = window.setInterval(() => {
-        lastMessageAt = Date.now();
-        receiveRecalculated({ data: JSON.stringify({ calcVersion: ++version }) } as MessageEvent<string>);
+        receiveRecalculated({ data: JSON.stringify({ calcVersion: ++version, calculatedAt: new Date().toISOString() }) } as MessageEvent<string>);
       }, 15_000);
       return () => {
         disposed = true;
         window.clearInterval(timer);
         if (invalidationTimer !== null) window.clearTimeout(invalidationTimer);
-        if (pulseTimer.current !== null) window.clearTimeout(pulseTimer.current);
       };
     }
 
-    eventSource = new EventSource('/api/v1/stream', { withCredentials: true });
-    eventSource.onopen = () => {
-      lastMessageAt = Date.now();
-      setStatus('live');
-      clearFallback();
+    const connect = () => {
+      if (disposed) return;
+      const source = new EventSource('/api/v1/stream', { withCredentials: true });
+      eventSource = source;
+      source.onopen = () => {
+        if (eventSource !== source) return;
+        lastMessageAt = Date.now();
+        setStatus('live');
+        clearFallback();
+      };
+      source.onerror = () => {
+        if (eventSource !== source) return;
+        setStatus('reconnecting');
+        if (source.readyState !== EventSource.CLOSED || reconnectTimer !== null) return;
+        source.close();
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = null;
+          connect();
+        }, CLOSED_RETRY_MS);
+      };
+      source.addEventListener('ping', () => {
+        if (eventSource !== source) return;
+        lastMessageAt = Date.now();
+        setStatus('live');
+        clearFallback();
+      });
+      source.addEventListener('recalculated', (event) => {
+        if (eventSource === source) receiveRecalculated(event as MessageEvent<string>);
+      });
     };
-    eventSource.onerror = () => setStatus('reconnecting');
-    eventSource.addEventListener('ping', () => {
-      lastMessageAt = Date.now();
-      setStatus('live');
-      clearFallback();
-    });
-    eventSource.addEventListener('recalculated', (event) => receiveRecalculated(event as MessageEvent<string>));
-
+    connect();
     const watchdog = window.setInterval(() => {
       if (Date.now() - lastMessageAt < QUIET_TIMEOUT_MS) return;
       setStatus('reconnecting');
       if (fallbackTimer !== null) return;
       fallbackTimer = window.setInterval(() => {
-        void queryClient.invalidateQueries({ queryKey: ['summary'] }).then(markUpdated);
+        void queryClient.invalidateQueries({ queryKey: ['summary'] });
       }, FALLBACK_POLL_MS);
     }, 1_000);
 
@@ -128,12 +140,14 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       window.clearInterval(watchdog);
       clearFallback();
       if (invalidationTimer !== null) window.clearTimeout(invalidationTimer);
-      if (pulseTimer.current !== null) window.clearTimeout(pulseTimer.current);
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
     };
   }, [queryClient]);
 
+  const value = useMemo(() => ({ status, calculatedAt, calculationRevision }), [status, calculatedAt, calculationRevision]);
+
   return (
-    <LiveUpdatesContext.Provider value={{ status, updatedAt, recentlyUpdated }}>
+    <LiveUpdatesContext.Provider value={value}>
       {children}
     </LiveUpdatesContext.Provider>
   );
@@ -141,4 +155,26 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
 
 export function useLiveUpdates() {
   return useContext(LiveUpdatesContext);
+}
+
+export function useRecentlyChanged(value: string | number | null | undefined) {
+  const previousValue = useRef(value);
+  const [changed, setChanged] = useState(false);
+  const timer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (Object.is(previousValue.current, value)) return;
+    previousValue.current = value;
+    setChanged(true);
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      setChanged(false);
+    }, 1_200);
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+  }, [value]);
+
+  return changed;
 }

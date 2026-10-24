@@ -10,7 +10,7 @@ interface LiveDotProps {
 const DEFAULT_LABEL: Record<LiveStatus, string> = {
   live: 'Live',
   reconnecting: 'Переподключение…',
-  idle: 'Данные пока не загружены',
+  idle: 'Подключаемся…',
 };
 
 /** Connection state for live recalculation updates. */

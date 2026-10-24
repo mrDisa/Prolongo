@@ -18,7 +18,7 @@ const NAV_ITEMS = [
 /** Sidebar body, shared by the fixed desktop sidebar and the mobile menu. */
 export function SidebarContent() {
   const { data } = useMe();
-  const { status } = useLiveUpdates();
+  const { status, calculatedAt } = useLiveUpdates();
   const logout = useLogout();
   const user = data?.user;
   const initial = (user?.displayName ?? user?.username ?? '?').charAt(0).toUpperCase();
@@ -49,7 +49,7 @@ export function SidebarContent() {
       </nav>
 
       <div className="mt-auto flex flex-col gap-4">
-        <LiveDot status={status} />
+        <LiveDot status={status} label={status === 'live' && calculatedAt ? `Live · данные на ${formatCalculatedAt(calculatedAt)}` : undefined} />
         <ThemeToggle />
         <div className="flex items-center gap-3 rounded-tile bg-surface-2 p-3">
           <div
@@ -75,4 +75,10 @@ export function SidebarContent() {
       </div>
     </div>
   );
+}
+
+function formatCalculatedAt(value: string) {
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    .format(new Date(value))
+    .replace(/\.$/, '');
 }
