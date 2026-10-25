@@ -99,6 +99,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/model/settings", h.getSettings)
 			r.Patch("/model/settings", h.patchSettings)
 			r.Post("/model/settings/reset", h.resetSettings)
+			r.Get("/model/settings/versions", h.settingsVersions)
 			r.Post("/model/preview", h.preview)
 			r.Get("/customers", h.listCustomers)
 			r.Get("/customers/{id}", h.getCustomer)

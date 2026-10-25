@@ -9,7 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// SettingsRow is the single row of core.model_settings. Data is the settings JSON;
+// SettingsRow is the single row of core.model_settings (or one version of its history;
+// UpdatedAt is then the time the version was saved). Data is the settings JSON;
 // its meaning belongs to package settings, the store only keeps it.
 type SettingsRow struct {
 	Version   int64
@@ -32,11 +33,17 @@ func (s *Store) SettingsRow(ctx context.Context) (SettingsRow, error) {
 }
 
 // InsertSettings creates the row with version 1 unless it already exists, and returns the stored row.
-// Two core instances starting at once cannot overwrite each other.
+// Two core instances starting at once cannot overwrite each other. Version 1 also starts the history.
 func (s *Store) InsertSettings(ctx context.Context, data []byte) (SettingsRow, error) {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO core.model_settings (id, version, data) VALUES (1, 1, $1)
-		ON CONFLICT (id) DO NOTHING`, data)
+		WITH created AS (
+			INSERT INTO core.model_settings (id, version, data) VALUES (1, 1, $1)
+			ON CONFLICT (id) DO NOTHING
+			RETURNING version, data, updated_at
+		)
+		INSERT INTO core.model_settings_history (version, data, saved_at)
+		SELECT version, data, updated_at FROM created
+		ON CONFLICT (version) DO NOTHING`, data)
 	if err != nil {
 		return SettingsRow{}, fmt.Errorf("store: insert settings: %w", err)
 	}
@@ -44,7 +51,7 @@ func (s *Store) InsertSettings(ctx context.Context, data []byte) (SettingsRow, e
 }
 
 // UpdateSettings changes the settings atomically: it locks the row (SELECT … FOR UPDATE),
-// passes it to change, saves the returned data and increments the version.
+// passes it to change, saves the returned data, increments the version and adds it to the history.
 // Concurrent PATCH requests wait for each other instead of losing one of the changes.
 // If change returns an error, nothing is saved and that error is returned as is.
 func (s *Store) UpdateSettings(ctx context.Context, change func(SettingsRow) ([]byte, error)) (SettingsRow, error) {
@@ -77,8 +84,37 @@ func (s *Store) UpdateSettings(ctx context.Context, change func(SettingsRow) ([]
 	if err != nil {
 		return SettingsRow{}, fmt.Errorf("store: update settings: %w", err)
 	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO core.model_settings_history (version, data, saved_at) VALUES ($1, $2, $3)
+		ON CONFLICT (version) DO NOTHING`, next.Version, next.Data, next.UpdatedAt)
+	if err != nil {
+		return SettingsRow{}, fmt.Errorf("store: settings history: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return SettingsRow{}, fmt.Errorf("store: update settings: %w", err)
 	}
 	return next, nil
+}
+
+// SettingsHistory returns the saved versions, newest first, at most limit of them.
+func (s *Store) SettingsHistory(ctx context.Context, limit int) ([]SettingsRow, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT version, saved_at, data FROM core.model_settings_history
+		ORDER BY version DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: settings history: %w", err)
+	}
+	defer rows.Close()
+	versions := []SettingsRow{}
+	for rows.Next() {
+		var r SettingsRow
+		if err := rows.Scan(&r.Version, &r.UpdatedAt, &r.Data); err != nil {
+			return nil, fmt.Errorf("store: settings history: %w", err)
+		}
+		versions = append(versions, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: settings history: %w", err)
+	}
+	return versions, nil
 }

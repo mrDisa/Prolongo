@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, LoaderCircle, RotateCcw, Save } from 'lucide-react';
+import { ArrowRight, History, LoaderCircle, RotateCcw, Save } from 'lucide-react';
 import { useBlocker } from 'react-router-dom';
-import { MODEL_SETTINGS_KEY, useModelSettings } from '@/api/queries';
+import { MODEL_SETTINGS_KEY, useModelSettings, useModelVersions } from '@/api/queries';
 import type { components } from '@/api/schema';
 import { api } from '@/api/client';
 import { unwrap } from '@/api/errors';
@@ -12,7 +12,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { FeatureWeightRow } from '@/components/FeatureWeightRow';
 import { PageHeader } from '@/components/PageHeader';
 import { ScoreWaterfall } from '@/components/ScoreWaterfall';
-import { formatEUR } from '@/lib/format';
+import { formatDate, formatEUR } from '@/lib/format';
 import { useLivePreview, useSmoothFlag } from '@/lib/useLivePreview';
 import { useLiveUpdates } from '@/live/useLiveUpdates';
 
@@ -38,11 +38,14 @@ export default function Model() {
   const [resetConfirmationOpen, setResetConfirmationOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [toast, setToast] = useState('');
+  // A saved version loaded into the draft from the version switcher; null while editing the current one.
+  const [viewedVersion, setViewedVersion] = useState<Settings | null>(null);
   const baseSettingsRef = useRef<Settings | null>(null);
   const draftRef = useRef<DraftSettings | null>(null);
   draftRef.current = draft;
 
   const settingsQuery = useModelSettings();
+  const versionsQuery = useModelVersions();
 
   useEffect(() => {
     const next = settingsQuery.data;
@@ -85,19 +88,21 @@ export default function Model() {
   const livePreview = useLivePreview(draft && settings && valid ? patch : null, calculationRevision);
   const showRecalculating = useSmoothFlag(livePreview.pending);
   const saveMutation = useMutation({
-    mutationFn: (body: SettingsPatch) => unwrap(api.PATCH('/api/v1/model/settings', { body })),
-    onSuccess: async (saved) => {
+    mutationFn: ({ body }: { body: SettingsPatch; restored: number | null }) => unwrap(api.PATCH('/api/v1/model/settings', { body })),
+    onSuccess: async (saved, { restored }) => {
       baseSettingsRef.current = saved;
       setBaseSettings(saved);
       setDraft(makeDraft(saved));
+      setViewedVersion(null);
       setRemoteSettingsChanged(false);
       queryClient.setQueryData(MODEL_SETTINGS_KEY, saved);
       void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'me' && query.queryKey[0] !== MODEL_SETTINGS_KEY[0] });
+      const done = restored === null ? 'Модель пересчитана' : `Версия №${restored} снова действует (теперь №${saved.version})`;
       try {
         const summary = await unwrap(api.GET('/api/v1/analytics/summary', { params: { query: { horizonDays: saved.horizonDays } } }));
-        setToast(`Модель пересчитана · расчёт №${summary.calcVersion}`);
+        setToast(`${done} · расчёт №${summary.calcVersion}`);
       } catch {
-        setToast(`Модель сохранена · версия №${saved.version}`);
+        setToast(restored === null ? `Модель сохранена · версия №${saved.version}` : done);
       }
     },
   });
@@ -107,6 +112,7 @@ export default function Model() {
       baseSettingsRef.current = reset;
       setBaseSettings(reset);
       setDraft(makeDraft(reset));
+      setViewedVersion(null);
       setRemoteSettingsChanged(false);
       setToast('');
       queryClient.setQueryData(MODEL_SETTINGS_KEY, reset);
@@ -146,6 +152,16 @@ export default function Model() {
     }) : current);
   }
 
+  function openVersion(version: number) {
+    if (!settings) return;
+    const target = version === settings.version ? null : versionsQuery.data?.items.find((item) => item.version === version);
+    if (target === undefined) return;
+    if (isDirty && !viewedVersion && !window.confirm('Несохранённые изменения черновика пропадут. Открыть другую версию?')) return;
+    setToast('');
+    setViewedVersion(target);
+    setDraft(makeDraft(target ?? settings));
+  }
+
   function resetToDefaults() {
     setResetConfirmationOpen(true);
   }
@@ -165,6 +181,8 @@ export default function Model() {
   const accountFeatures = draft.features.filter((feature) => feature.scope === 'account');
   const selectedContributions = selectedCustomer ? toContributions(selectedCustomer, draft.features) : [];
   const selectedLevel = selectedCustomer?.riskLevel;
+  const versions = versionsQuery.data?.items ?? [];
+  const versionOptions = versions.some(({ version }) => version === settings.version) ? versions : [settings, ...versions];
 
   return (
     <>
@@ -173,18 +191,47 @@ export default function Model() {
         subtitle="Двигайте веса — справа сразу видно, как изменятся клиенты и деньги"
         actions={(
           <>
+            <label className="flex items-center gap-2 text-[13px] font-medium text-ink-2">
+              <History size={16} aria-hidden="true" />
+              <span className="sr-only">Версия модели</span>
+              <select
+                value={viewedVersion?.version ?? settings.version}
+                onChange={(event) => openVersion(Number(event.target.value))}
+                disabled={saveMutation.isPending || resetMutation.isPending}
+                className="h-11 rounded-field border border-line-strong bg-surface px-3 text-[14px] text-ink focus:border-accent disabled:opacity-50"
+              >
+                {versionOptions.map((version) => (
+                  <option key={version.version} value={version.version}>
+                    №{version.version} · {formatShortDate(version.updatedAt)}{version.version === settings.version ? ' · текущая' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button type="button" onClick={resetToDefaults} disabled={resetMutation.isPending || saveMutation.isPending} className="inline-flex h-11 items-center gap-2 rounded-field border border-line-strong bg-surface px-4 text-[14px] font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-50">
               <RotateCcw size={16} aria-hidden="true" /> {resetMutation.isPending ? 'Сбрасываем…' : 'Вернуть стандартные'}
             </button>
-            <button type="button" onClick={() => patch && saveMutation.mutate(patch)} disabled={!isDirty || !valid || saveMutation.isPending} className="inline-flex h-11 items-center gap-2 rounded-field bg-accent px-4 text-[14px] font-semibold text-accent-ink disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="button" onClick={() => patch && saveMutation.mutate({ body: patch, restored: viewedVersion?.version ?? null })} disabled={!isDirty || !valid || saveMutation.isPending} className="inline-flex h-11 items-center gap-2 rounded-field bg-accent px-4 text-[14px] font-semibold text-accent-ink disabled:cursor-not-allowed disabled:opacity-50">
               <Save size={16} aria-hidden="true" /> {saveMutation.isPending ? 'Сохраняем…' : `Сохранить · ${dirtyCount}`}
             </button>
           </>
         )}
       />
 
+      {viewedVersion ? (
+        <div role="status" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-field border border-accent bg-accent-soft px-4 py-3 text-[14px] text-accent-text">
+          <p>
+            <span className="font-semibold">Вы смотрите версию №{viewedVersion.version} от {formatDate(viewedVersion.updatedAt)}.</span>{' '}
+            {isDirty
+              ? 'Цифры справа — эта версия на текущих данных. «Сохранить» сделает её действующей.'
+              : 'Она совпадает с действующей моделью.'}
+          </p>
+          <button type="button" onClick={() => openVersion(settings.version)} className="h-9 shrink-0 rounded-field border border-accent px-3 text-[13px] font-semibold">
+            Вернуться к текущей
+          </button>
+        </div>
+      ) : null}
       {toast ? <p role="status" className="mb-5 rounded-field border border-low bg-low-soft px-4 py-3 text-[14px] font-semibold text-low-text">{toast}</p> : null}
-      {saveMutation.isError ? <div className="mb-5"><ErrorState message={saveMutation.error instanceof Error ? saveMutation.error.message : 'Не удалось сохранить настройки'} onRetry={() => patch && saveMutation.mutate(patch)} /></div> : null}
+      {saveMutation.isError ? <div className="mb-5"><ErrorState message={saveMutation.error instanceof Error ? saveMutation.error.message : 'Не удалось сохранить настройки'} onRetry={() => patch && saveMutation.mutate({ body: patch, restored: viewedVersion?.version ?? null })} /></div> : null}
       {resetMutation.isError ? <div className="mb-5"><ErrorState message={resetMutation.error instanceof Error ? resetMutation.error.message : 'Не удалось вернуть стандартные настройки'} onRetry={() => resetMutation.mutate()} /></div> : null}
       {remoteSettingsChanged && isDirty ? <p role="status" className="mb-5 rounded-field border border-med bg-med-soft px-4 py-3 text-[14px] font-medium text-med-text">Настройки на сервере изменились. Черновик обновлён поверх новых значений, ваши правки сохранены в нём.</p> : null}
       {draft && !valid ? <p role="alert" className="mb-5 rounded-field bg-high-soft px-4 py-3 text-[14px] font-medium text-high-text">Проверьте значения: пороги должны быть целыми от 1 до 100, medium меньше high, горизонт — целым числом от 1 до 365 дней.</p> : null}
@@ -424,6 +471,11 @@ function isValidDraft(draft: DraftSettings): boolean {
   return Number.isInteger(draft.horizonDays) && draft.horizonDays >= 1 && draft.horizonDays <= 365
     && Number.isInteger(draft.thresholds.medium) && Number.isInteger(draft.thresholds.high)
     && draft.thresholds.medium >= 1 && draft.thresholds.medium < draft.thresholds.high && draft.thresholds.high <= 100;
+}
+
+/** "25 окт, 13:56": the version list is about today and yesterday, the year only takes space. */
+function formatShortDate(value: string): string {
+  return formatDate(value).replace(/ \d{4},/, ',');
 }
 
 function formatDelta(value: number): string {

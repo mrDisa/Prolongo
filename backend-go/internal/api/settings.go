@@ -12,7 +12,10 @@ import (
 	"github.com/mrDisa/Prolongo/backend-go/internal/settings"
 )
 
-const maxSettingsBody = 64 << 10 // 64 KiB: a patch of every feature is a few hundred bytes
+const (
+	maxSettingsBody  = 64 << 10 // 64 KiB: a patch of every feature is a few hundred bytes
+	maxSettingsSaved = 50       // versions listed by GET /model/settings/versions
+)
 
 // modelSettingsJSON is the ModelSettings schema of openapi.yml.
 type modelSettingsJSON struct {
@@ -78,6 +81,25 @@ func (h *handlers) getSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toSettingsJSON(rec))
+}
+
+// settingsVersionsJSON is the ModelSettingsVersions schema of openapi.yml.
+type settingsVersionsJSON struct {
+	Items []modelSettingsJSON `json:"items"`
+}
+
+// settingsVersions: GET /api/v1/model/settings/versions — saved versions, newest (current) first.
+func (h *handlers) settingsVersions(w http.ResponseWriter, r *http.Request) {
+	recs, err := h.settings.History(r.Context(), maxSettingsSaved)
+	if err != nil {
+		writeInternal(w, r, h.logger, err)
+		return
+	}
+	out := settingsVersionsJSON{Items: make([]modelSettingsJSON, 0, len(recs))}
+	for _, rec := range recs {
+		out.Items = append(out.Items, toSettingsJSON(rec))
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // patchSettings: PATCH /api/v1/model/settings — only the changed fields.

@@ -498,6 +498,25 @@ paths:
               schema: { $ref: '#/components/schemas/ModelSettings' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/v1/model/settings/versions:
+    get:
+      tags: [model]
+      operationId: listModelSettingsVersions
+      summary: Сохранённые версии настроек модели
+      description: |
+        Каждое сохранение (PATCH) и сброс создают версию; неудачная проверка версию не создаёт.
+        Последние 50 версий, новые сначала — первая всегда равна текущим настройкам.
+        Признаки раскладываются по реестру кода, как в GET /model/settings: признак, которого не было
+        при сохранении, приходит со стандартным весом. Чтобы вернуть старую версию, клиент
+        отправляет разницу с текущими настройками через PATCH — появится новая версия.
+      responses:
+        '200':
+          description: Версии, новые сначала
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelSettingsVersions' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /api/v1/model/preview:
     post:
       tags: [model]
@@ -1260,6 +1279,16 @@ components:
           - { key: short_billing, title: Короткий период оплаты, description: 'Почасовая или понедельная оплата — уйти проще.', scope: service, weight: 5, defaultWeight: 5, min: 0, max: 30, enabled: true }
           - { key: new_client, title: Новый клиент, description: 'Пополнил меньше чем на 3 месяца своих услуг.', scope: account, weight: 7, defaultWeight: 7, min: 0, max: 30, enabled: true }
           - { key: loyal_payer, title: Стабильно продлевает, description: 'Успешные продления снижают риск — до 5 продлений.', scope: account, weight: -10, defaultWeight: -10, min: -50, max: 0, enabled: true }
+
+    ModelSettingsVersions:
+      type: object
+      description: Сохранённые версии настроек, новые сначала
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: 'Не больше 50 версий; items[0] — текущие настройки'
+          items: { $ref: '#/components/schemas/ModelSettings' }
 
     ModelSettingsPatch:
       type: object
