@@ -5,6 +5,7 @@ import { unwrap } from './errors';
 export const ME_KEY = ['me'] as const;
 export const AUTH_CONFIG_KEY = ['auth-config'] as const;
 export const MODEL_SETTINGS_KEY = ['model-settings'] as const;
+export const MODEL_VERSIONS_KEY = ['model-settings-versions'] as const;
 export const SOURCE_EVENTS_KEY = ['events'] as const;
 export const SIMULATOR_KEY = ['simulator'] as const;
 
@@ -13,6 +14,15 @@ export function useModelSettings() {
   return useQuery({
     queryKey: MODEL_SETTINGS_KEY,
     queryFn: () => unwrap(api.GET('/api/v1/model/settings')),
+    staleTime: 60_000,
+  });
+}
+
+/** Saved versions of the model settings, newest (current) first. */
+export function useModelVersions() {
+  return useQuery({
+    queryKey: MODEL_VERSIONS_KEY,
+    queryFn: () => unwrap(api.GET('/api/v1/model/settings/versions')),
     staleTime: 60_000,
   });
 }
