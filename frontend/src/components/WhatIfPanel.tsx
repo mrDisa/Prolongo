@@ -111,9 +111,9 @@ export function WhatIfPanel({ customerId, calcVersion, horizonDays, services, co
         ) : null}
         {result ? (
           <div className="mt-5">
-            <div className="flex items-stretch gap-2">
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row">
               <StateCell label="Сейчас" state={result.before} />
-              <ArrowRight size={20} aria-hidden="true" className="shrink-0 self-center text-ink-3" />
+              <ArrowRight size={20} aria-hidden="true" className="shrink-0 rotate-90 self-center text-ink-3 sm:rotate-0" />
               <StateCell label="После действий" state={result.after} />
             </div>
             <p className={`mt-4 font-display text-[18px] font-semibold ${result.savedCents > 0 ? 'text-low-text' : result.savedCents < 0 ? 'text-high-text' : ''}`}>
