@@ -13,6 +13,7 @@ import { PaymentStrip } from '@/components/PaymentStrip';
 import { RiskBadge } from '@/components/RiskBadge';
 import { ScoreScale } from '@/components/ScoreScale';
 import { ScoreWaterfall } from '@/components/ScoreWaterfall';
+import { WhatIfPanel } from '@/components/WhatIfPanel';
 import { formatDate, formatDaysLeft, formatEUR, formatRelative } from '@/lib/format';
 import { levelLabel, noScoreReasonLabel } from '@/lib/levels';
 import { useHorizon } from '@/lib/period';
@@ -117,9 +118,10 @@ function ServiceTable({ services }: { services: Service[] }) {
   );
 }
 
-function CustomerContent({ customer, thresholds }: {
+function CustomerContent({ customer, thresholds, horizonDays }: {
   customer: CustomerDetail;
   thresholds: { medium: number; high: number };
+  horizonDays: number | undefined;
 }) {
   const [copied, setCopied] = useState<'success' | 'error' | null>(null);
   const noScore = customer.scoreStatus === 'no_score';
@@ -233,6 +235,17 @@ function CustomerContent({ customer, thresholds }: {
             <MoneySplit money={customer.money} probability={customer.probability} />
           ) : null}
 
+          {!noScore ? (
+            <WhatIfPanel
+              key={customer.id}
+              customerId={customer.id}
+              calcVersion={customer.calcVersion}
+              horizonDays={horizonDays}
+              services={customer.services}
+              contributions={customer.contributions}
+            />
+          ) : null}
+
           <section className="rounded-block bg-surface p-6" aria-labelledby="recommendations-title">
             <SectionTitle><span id="recommendations-title">Что сделать</span></SectionTitle>
             {customer.recommendations.length ? (
@@ -284,7 +297,7 @@ export default function Customer() {
       {!validId ? (
         <ErrorState title="Клиент не найден" message="В адресе указан некорректный ID клиента." />
       ) : customerQuery.data ? (
-        <CustomerContent customer={customerQuery.data} thresholds={thresholds} />
+        <CustomerContent customer={customerQuery.data} thresholds={thresholds} horizonDays={requestHorizonDays} />
       ) : customerQuery.isPending ? (
         <CustomerSkeleton />
       ) : customerQuery.isError ? (

@@ -102,6 +102,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/model/preview", h.preview)
 			r.Get("/customers", h.listCustomers)
 			r.Get("/customers/{id}", h.getCustomer)
+			r.Post("/customers/{id}/what-if", h.whatIf)
 			r.Get("/analytics/summary", h.summary)
 			r.Get("/analytics/churn-timeline", h.churnTimeline)
 			r.Get("/stream", h.stream)
