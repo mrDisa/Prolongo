@@ -19,6 +19,7 @@ type Store interface {
 	SettingsRow(ctx context.Context) (store.SettingsRow, error)
 	InsertSettings(ctx context.Context, data []byte) (store.SettingsRow, error)
 	UpdateSettings(ctx context.Context, change func(store.SettingsRow) ([]byte, error)) (store.SettingsRow, error)
+	SettingsHistory(ctx context.Context, limit int) ([]store.SettingsRow, error)
 }
 
 // Record is the current settings with their version.
@@ -70,6 +71,24 @@ func (s *Service) Get(ctx context.Context) (Record, error) {
 		return Record{}, fmt.Errorf("settings: %w", err)
 	}
 	return decodeRow(row)
+}
+
+// History returns the saved versions, newest first (the first one is the current settings),
+// each merged with the registry like Get.
+func (s *Service) History(ctx context.Context, limit int) ([]Record, error) {
+	rows, err := s.store.SettingsHistory(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("settings: %w", err)
+	}
+	out := make([]Record, 0, len(rows))
+	for _, row := range rows {
+		rec, err := decodeRow(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, nil
 }
 
 // Patch applies a partial change in one transaction. Invalid input returns *ValidationError

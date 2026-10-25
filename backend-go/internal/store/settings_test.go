@@ -40,6 +40,37 @@ func TestSettingsRow(t *testing.T) {
 	assert.True(t, !next.UpdatedAt.Before(row.UpdatedAt))
 }
 
+// Every saved version stays in the history, newest first; a failed update adds nothing.
+func TestSettingsHistory(t *testing.T) {
+	s, _ := setup(t)
+	ctx := context.Background()
+	_, err := s.InsertSettings(ctx, []byte(`{"n":1}`))
+	require.NoError(t, err)
+	_, err = s.InsertSettings(ctx, []byte(`{"n":999}`))
+	require.NoError(t, err)
+	for _, data := range []string{`{"n":2}`, `{"n":3}`} {
+		_, err := s.UpdateSettings(ctx, func(store.SettingsRow) ([]byte, error) { return []byte(data), nil })
+		require.NoError(t, err)
+	}
+	_, err = s.UpdateSettings(ctx, func(store.SettingsRow) ([]byte, error) { return nil, errors.New("invalid") })
+	require.Error(t, err)
+
+	history, err := s.SettingsHistory(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, history, 3)
+	for i, want := range []string{`{"n":3}`, `{"n":2}`, `{"n":1}`} {
+		assert.EqualValues(t, 3-i, history[i].Version)
+		assert.JSONEq(t, want, string(history[i].Data))
+	}
+	cur, err := s.SettingsRow(ctx)
+	require.NoError(t, err)
+	assert.True(t, cur.UpdatedAt.Equal(history[0].UpdatedAt), "the newest version is the current row")
+
+	limited, err := s.SettingsHistory(ctx, 2)
+	require.NoError(t, err)
+	assert.Len(t, limited, 2)
+}
+
 func TestUpdateSettingsRollsBackOnError(t *testing.T) {
 	s, _ := setup(t)
 	ctx := context.Background()

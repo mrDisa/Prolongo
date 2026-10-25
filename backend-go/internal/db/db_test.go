@@ -25,14 +25,14 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	require.NoError(t, Migrate(ctx, pool, quiet))
 	require.NoError(t, Migrate(ctx, pool, quiet), "second run must be a no-op")
 
-	for _, table := range []string{"core.users", "core.sessions", "core.model_settings", "core.risk_daily", "core.goose_db_version"} {
+	for _, table := range []string{"core.users", "core.sessions", "core.model_settings", "core.model_settings_history", "core.risk_daily", "core.goose_db_version"} {
 		var name *string
 		require.NoError(t, pool.QueryRow(ctx, `SELECT to_regclass($1)::text`, table).Scan(&name))
 		assert.NotNil(t, name, table)
 	}
 	var version int64
 	require.NoError(t, pool.QueryRow(ctx, `SELECT max(version_id) FROM core.goose_db_version`).Scan(&version))
-	assert.EqualValues(t, 1, version)
+	assert.EqualValues(t, 2, version)
 }
 
 func TestWaitForSource(t *testing.T) {

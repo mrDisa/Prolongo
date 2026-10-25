@@ -73,6 +73,28 @@ func TestInvalidPatchSavesNothing(t *testing.T) {
 	assert.EqualValues(t, 1, rec.Version)
 }
 
+func TestHistory(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t)
+	_, err := svc.Patch(ctx, engine.Patch{HorizonDays: ptr(14)})
+	require.NoError(t, err)
+	_, err = svc.Patch(ctx, engine.Patch{HorizonDays: ptr(0)}) // invalid: not saved, not a version
+	require.Error(t, err)
+	_, err = svc.Reset(ctx)
+	require.NoError(t, err)
+
+	history, err := svc.History(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, history, 3)
+	assert.Equal(t, []int64{3, 2, 1}, []int64{history[0].Version, history[1].Version, history[2].Version})
+	assert.Equal(t, 14, history[1].HorizonDays)
+	assert.Equal(t, engine.DefaultSettings(), history[0].Settings)
+
+	limited, err := svc.History(ctx, 1)
+	require.NoError(t, err)
+	assert.Len(t, limited, 1)
+}
+
 // Settings saved before a feature existed: it appears with its default weight;
 // a key the code no longer knows stays in the stored JSON.
 func TestMergeWithRegistry(t *testing.T) {

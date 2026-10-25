@@ -50,6 +50,48 @@ func TestGetSettings(t *testing.T) {
 	}
 }
 
+// Every save and reset is a version; the list is newest first and each item is full settings.
+func TestSettingsVersions(t *testing.T) {
+	h := NewRouter(testDeps(t, nil))
+	cookie := login(t, h)
+
+	for _, req := range []struct{ method, path, body string }{
+		{http.MethodPatch, "/api/v1/model/settings", `{"features":{"prolong_wait":{"weight":60}}}`},
+		{http.MethodPatch, "/api/v1/model/settings", `{"thresholds":{"high":70}}`},
+		{http.MethodPatch, "/api/v1/model/settings", `{"thresholds":{"high":0}}`}, // 422: not a version
+		{http.MethodPost, "/api/v1/model/settings/reset", ``},
+	} {
+		do(h, req.method, req.path, req.body, cookie)
+	}
+
+	rec := do(h, http.MethodGet, "/api/v1/model/settings/versions", "", cookie)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var out settingsVersionsJSON
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	require.Len(t, out.Items, 4)
+
+	versions := make([]int64, 0, len(out.Items))
+	for _, s := range out.Items {
+		versions = append(versions, s.Version)
+		require.Len(t, s.Features, len(features.All()))
+	}
+	assert.Equal(t, []int64{4, 3, 2, 1}, versions)
+
+	current := decodeSettings(t, do(h, http.MethodGet, "/api/v1/model/settings", "", cookie).Body.Bytes())
+	assert.Equal(t, current, out.Items[0], "the first item is the current settings")
+	assert.Equal(t, 70, out.Items[1].Thresholds.High)
+	weight := func(s modelSettingsJSON) float64 {
+		for _, f := range s.Features {
+			if f.Key == "prolong_wait" {
+				return f.Weight
+			}
+		}
+		return 0
+	}
+	assert.EqualValues(t, 60, weight(out.Items[2]), "an old version keeps its own weights")
+	assert.EqualValues(t, 45, weight(out.Items[3]))
+}
+
 func TestPatchSettings(t *testing.T) {
 	h := NewRouter(testDeps(t, nil))
 	cookie := login(t, h)
