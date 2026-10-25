@@ -374,6 +374,33 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/v1/customers/{id}/what-if:
+    post:
+      tags: [customers]
+      operationId: postCustomerWhatIf
+      summary: «Что будет, если…» — эффект действий удержания для клиента
+      description: |
+        Применяет действия к копии данных одного клиента и считает его тем же движком: score, уровень, причины и деньги «было → стало».
+        Ничего не сохраняет и не отправляет SSE — как предпросмотр модели. Действия применяются по порядку: сначала пополнение, потом оплата — так оплата видит новый баланс.
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+        - $ref: '#/components/parameters/HorizonDays'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WhatIfRequest' }
+      responses:
+        '200':
+          description: Оценка клиента до и после действий
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WhatIfResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
   /api/v1/analytics/summary:
     get:
       tags: [analytics]
@@ -930,6 +957,66 @@ components:
         expectedLossCents: { type: integer, description: 'Ожидаемые потери = probability × atRisk, центы', example: 338372 }
         mrrCents: { type: integer, description: 'Месячная выручка живых услуг, центы', example: 469140 }
         explanation: { type: string, description: Расчёт словами для карточки, example: 'Услуги принесут €4 697,65 за 30 дней. Бонусы заблокированы, €286,57 спишется с баланса автоматически. Под риском €4 411,08, вероятность ухода 77% → ожидаемые потери €3 383,72.' }
+
+    WhatIfAction:
+      type: object
+      description: 'Действие удержания: top_up — пополнение на amountCents; enable_auto_prolong — включить автопродление (serviceId — одна услуга, без него — все живые); pay_waiting — оплатить услуги в prolong_wait (сначала бонусы, если unlocked, потом баланс)'
+      required: [type]
+      properties:
+        type: { type: string, enum: [top_up, enable_auto_prolong, pay_waiting], description: Что делает клиент, example: top_up }
+        amountCents: { type: integer, minimum: 1, maximum: 10000000, description: 'Сумма пополнения, центы — только для top_up', example: 5000 }
+        serviceId: { type: integer, minimum: 1, description: Услуга клиента — только для enable_auto_prolong, example: 25 }
+
+    WhatIfRequest:
+      type: object
+      description: Действия по порядку
+      required: [actions]
+      properties:
+        actions:
+          type: array
+          minItems: 1
+          maxItems: 10
+          description: Действия удержания, применяются по порядку
+          items: { $ref: '#/components/schemas/WhatIfAction' }
+      example:
+        actions:
+          - { type: top_up, amountCents: 5000 }
+          - { type: pay_waiting }
+
+    WhatIfState:
+      type: object
+      description: Оценка клиента в одном из состояний — до или после действий
+      required: [scoreStatus, noScoreReason, riskScore, riskLevel, probability, balanceCents, money, contributions]
+      properties:
+        scoreStatus: { $ref: '#/components/schemas/ScoreStatus' }
+        noScoreReason:
+          description: Почему нет оценки; null, если оценка есть
+          oneOf: [{ $ref: '#/components/schemas/NoScoreReason' }, { type: 'null' }]
+        riskScore: { type: [integer, 'null'], minimum: 0, maximum: 100, description: 'Оценка риска 0–100; null без оценки', example: 77 }
+        riskLevel:
+          description: Уровень риска; null без оценки
+          oneOf: [{ $ref: '#/components/schemas/RiskLevel' }, { type: 'null' }]
+        probability: { type: [number, 'null'], minimum: 0, maximum: 1, description: Вероятность непродления, example: 0.7671 }
+        balanceCents: { type: integer, description: 'Баланс в этом состоянии, центы', example: 28657 }
+        money: { $ref: '#/components/schemas/Money' }
+        contributions:
+          type: array
+          description: Ненулевые признаки самой рисковой услуги, по убыванию |баллов|
+          items: { $ref: '#/components/schemas/Reason' }
+
+    WhatIfResponse:
+      type: object
+      description: «Было → стало» для действий удержания
+      required: [before, after, savedCents, notes]
+      properties:
+        before: { $ref: '#/components/schemas/WhatIfState' }
+        after: { $ref: '#/components/schemas/WhatIfState' }
+        savedCents: { type: integer, description: 'Насколько уменьшатся ожидаемые потери = before − after, центы; отрицательное — если риск вырастет', example: 204067 }
+        notes:
+          type: array
+          description: Что сделало каждое действие, словами — для карточки
+          items: { type: string }
+          example: ['Пополнит баланс на €50,00', 'service-0005: оплатит €7,48, услуга снова активна', 'service-0015: оплатит €2,97, услуга снова активна', 'service-0025: оплатит €6,51, услуга снова активна']
 
     Contribution:
       type: object
